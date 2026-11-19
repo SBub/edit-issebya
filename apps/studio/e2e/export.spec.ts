@@ -35,7 +35,19 @@ type Boxes = Record<string, Box>;
 // The page's own probes, set before any page script runs (see beforeAll).
 interface HeaderProbe {
   __headerBoxes: () => Boxes;
-  __headerWatch?: { stop: boolean; frames: number; low: Boxes; high: Boxes };
+  __headerWatch?: HeaderWatch;
+}
+// One watch of the header between two states (see `watchHeader`).
+interface HeaderWatch {
+  // How many times the boxes were measured, and how many of those followed a
+  // change to the header's tree.
+  samples: number;
+  changes: number;
+  // The panel's `data-export-state` at each measure, repeats dropped.
+  states: string[];
+  low: Boxes;
+  high: Boxes;
+  end: () => void;
 }
 // The two scripts the composition loads from jsdelivr, served from the pinned
 // local packages so the spec needs no network.
@@ -273,16 +285,23 @@ async function expectNoShift(state: string) {
   }
 }
 
-// Between two states too: from now on the page measures the same boxes on
-// every frame and keeps the lowest and highest value of each side.
+// Between two states too: from now on the page measures the same boxes and
+// keeps the lowest and highest value of each side. It measures at once, after
+// every change to the header's own tree (a MutationObserver, so each state the
+// panel goes through is measured in the layout it was committed with, however
+// few frames the machine draws), on every frame (what moves with no change to
+// the tree, a transition) and a last time when the watch ends.
 async function watchHeader() {
   await page.evaluate(() => {
     const probe = window as unknown as HeaderProbe;
-    const watch = { stop: false, frames: 0, low: {} as Boxes, high: {} as Boxes };
-    probe.__headerWatch = watch;
-    const frame = () => {
-      if (watch.stop) return;
-      watch.frames += 1;
+    const header = document.querySelector("header");
+    if (!header) throw new Error("no header to watch");
+    const measure = () => {
+      watch.samples += 1;
+      const state = header
+        .querySelector('[data-testid="export-panel"]')
+        ?.getAttribute("data-export-state");
+      if (state && watch.states.at(-1) !== state) watch.states.push(state);
       for (const [name, box] of Object.entries(probe.__headerBoxes())) {
         const low = (watch.low[name] ??= { ...box });
         const high = (watch.high[name] ??= { ...box });
@@ -291,20 +310,57 @@ async function watchHeader() {
           high[side] = Math.max(high[side], box[side]);
         }
       }
-      requestAnimationFrame(frame);
     };
-    frame();
+    const changes = new MutationObserver(() => {
+      watch.changes += 1;
+      measure();
+    });
+    let frame = 0;
+    const watch: HeaderWatch = {
+      samples: 0,
+      changes: 0,
+      states: [],
+      low: {},
+      high: {},
+      end: () => {
+        changes.disconnect();
+        cancelAnimationFrame(frame);
+        measure();
+      },
+    };
+    probe.__headerWatch = watch;
+    changes.observe(header, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      characterData: true,
+    });
+    const onFrame = () => {
+      measure();
+      frame = requestAnimationFrame(onFrame);
+    };
+    onFrame();
   });
 }
 
-// Ends the watch: no box moved on any frame since `watchHeader`.
-async function expectNoShiftWhileWatched(state: string) {
+// Ends the watch: no box moved at any measure since `watchHeader`, and the
+// panel was measured in each of `states`, in that order (the states the watched
+// steps take it through). Nothing here counts frames: a slow machine draws few.
+async function expectNoShiftWhileWatched(state: string, states: string[]) {
   const watch = await page.evaluate(() => {
     const held = (window as unknown as HeaderProbe).__headerWatch!;
-    held.stop = true;
-    return held;
+    held.end();
+    const { samples, changes, states, low, high } = held;
+    return { samples, changes, states, low, high };
   });
-  expect(watch.frames).toBeGreaterThan(10);
+  // The panel in each state it went through, so each change between two of
+  // them was measured on both sides.
+  expect(watch.states, `the panel's states during "${state}"`).toEqual(states);
+  expect(watch.changes, `changes to the header during "${state}"`).toBeGreaterThanOrEqual(
+    states.length - 1,
+  );
+  // The first measure, one after each change, the last one.
+  expect(watch.samples).toBeGreaterThanOrEqual(watch.changes + 2);
   for (const name of ALWAYS) expect(watch.low, `${name} during "${state}"`).toHaveProperty([name]);
   for (const [name, low] of Object.entries(watch.low)) {
     const high = watch.high[name]!;
@@ -478,7 +534,8 @@ test("still on the reel's page when the export finishes: the file downloads by i
   await page.evaluate(() => {
     (window as unknown as { __noReload: string }).__noReload = "marker";
   });
-  // Every frame from the press on Export to the finished download is measured.
+  // Every change and every frame from the press on Export to the finished
+  // download is measured.
   await watchHeader();
   await page.getByTestId("export-button").click();
   await expect(panel()).toHaveAttribute("data-export-state", "exporting");
@@ -493,8 +550,12 @@ test("still on the reel's page when the export finishes: the file downloads by i
   await expect(page.getByTestId("export-message")).toHaveText("Downloaded");
   await expect(panel()).toHaveAttribute("data-export-state", "idle");
   await expect(page.getByTestId("export-download")).toBeVisible();
-  // `Downloaded` and Download are inside the slot: no frame moved anything.
-  await expectNoShiftWhileWatched("Export to the download by itself");
+  // `Downloaded` and Download are inside the slot: nothing moved at any measure.
+  await expectNoShiftWhileWatched("Export to the download by itself", [
+    "idle",
+    "exporting",
+    "idle",
+  ]);
   await expectNoShift("downloaded by itself");
   await expect(page.locator("dialog[open]")).toHaveCount(0);
   expect(await noReloadMarker()).toBe("marker");
@@ -534,7 +595,7 @@ test("only Cancel stops an export: leaving and coming back keeps it, Cancel ends
       await page.getByTestId("export-cancel").click();
       await expect(panel()).toHaveAttribute("data-export-state", "idle");
       await expect(page.getByTestId("export-button")).toBeEnabled();
-      await expectNoShiftWhileWatched("Cancel while rendering");
+      await expectNoShiftWhileWatched("Cancel while rendering", ["exporting", "idle"]);
       await expectNoShift("after Cancel");
 
       const exited = await worker.exited;
@@ -644,7 +705,7 @@ test("nothing in the header moves or changes size at any state of an export", as
   await page.getByTestId("export-cancel").click();
   await expect(panel()).toHaveAttribute("data-export-state", "idle");
   await expect(page.getByTestId("export-button")).toBeEnabled();
-  await expectNoShiftWhileWatched("Cancel");
+  await expectNoShiftWhileWatched("Cancel", ["exporting", "idle"]);
   await expectNoShift("after Cancel");
   await expect(page.getByTestId("export-download")).toHaveText("Download v2");
   expect((await renderJobs()).at(-1)).toMatchObject({ status: "cancelled" });

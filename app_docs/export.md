@@ -520,7 +520,10 @@ ffmpeg -f lavfi -i color=c=black:s=108x192:r=30:d=1 -f lavfi -i anullsrc=r=48000
   no dialog; nothing in the header moves (`expectNoShift`: at 1920, 1280 and 390 px wide, the
   header, each of its children, what is under it, the Export or Cancel box, the progress line, its
   bar and Download have the box they first had, within 0.5 px, at every state the file reaches;
-  `watchHeader` measures the same boxes on every frame between two states); the words about leaving are in the
+  `watchHeader` measures the same boxes between two states: at once, after every change to the
+  header's tree (a `MutationObserver`), on every frame and when the watch ends, and
+  `expectNoShiftWhileWatched` also requires the panel's states in order, never a number of frames,
+  which a slow machine does not reach); the words about leaving are in the
   Versions column's status line, not in the header; the reel's editing controls are disabled with the reason; the line rises with the
   render double (`E2E_MOCK_RENDER_SECONDS=25`); the owner goes to the reels list while it renders
   and the job is not cancelled; the Download icon appears beside the bin with no reload and no
