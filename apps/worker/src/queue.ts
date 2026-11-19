@@ -37,14 +37,37 @@ export const AI_RETRY_MINUTES = 15;
 
 type QueueConfig = Pick<WorkerConfig, "workerId" | "leaseSeconds">;
 
-// The oldest claimable job, now leased to this worker; null when none.
+// A lane's kind filter, as claim_job takes it: only these kinds, or every
+// kind except these.
+export interface JobLane {
+  name: string;
+  onlyKinds?: readonly string[];
+  exceptKinds?: readonly string[];
+}
+
+// The worker's two lanes (app_docs/studio.md, "Worker"): exports run in their
+// own lane, one at a time; every other kind runs in the main lane, one at a
+// time, next to it. So an upload, a photo or an owner's edit never waits behind
+// an export. The two filters cover every kind between them, each kind once.
+const EXPORT_KINDS = ["render"] as const;
+export const JOB_LANES: readonly JobLane[] = [
+  { name: "export", onlyKinds: EXPORT_KINDS },
+  { name: "main", exceptKinds: EXPORT_KINDS },
+];
+
+// The oldest claimable job, now leased to this worker; null when none. With a
+// lane, the oldest one of the lane's kinds (the order rule per reel or photo
+// still counts every kind).
 export async function claimJob(
   db: SupabaseClient,
   config: QueueConfig,
+  lane?: JobLane,
 ): Promise<ClaimedJob | null> {
   const { data, error } = await db.rpc("claim_job", {
     p_worker: config.workerId,
     p_lease_seconds: config.leaseSeconds,
+    ...(lane?.onlyKinds ? { p_only_kinds: [...lane.onlyKinds] } : {}),
+    ...(lane?.exceptKinds ? { p_except_kinds: [...lane.exceptKinds] } : {}),
   });
   if (error) throw new Error(`claim_job failed: ${error.message}`);
   const rows = (data ?? []) as ClaimedJob[];

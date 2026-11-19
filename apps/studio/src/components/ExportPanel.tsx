@@ -1,13 +1,16 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { type ReactNode, useEffect, useRef, useState } from "react";
-import { cancelExport, loadExport, requestExport } from "@/app/export-actions";
+import { useEffect, useState } from "react";
+import { cancelExport, requestExport } from "@/app/export-actions";
+import { DownloadExportButton, downloadExport } from "@/components/DownloadExportButton";
 import {
+  EDITING_OFF_WHILE_EXPORTING,
   type ExportRef,
   exportBlockedReason,
-  exportCancellable,
-  exportModalState,
+  exportProgress,
+  exportProgressLabel,
+  exportRunning,
   liveRenderJobId,
 } from "@/lib/exports";
 import type { JobRow, StepRow } from "@/lib/jobs";
@@ -16,117 +19,60 @@ import { capture } from "@/lib/track";
 
 interface Props {
   reel: Pick<ReelDetail, "id" | "status" | "current_version_id">;
-  // The reel's live jobs and steps: a render of the current version holds the
-  // button, and the modal follows its job's render step.
+  // The reel's live jobs and steps: a live render is the export in progress,
+  // and its render step gives the percent.
   jobs: readonly Pick<JobRow, "id" | "kind" | "status" | "version_id">[];
   steps: readonly Pick<StepRow, "job_id" | "name" | "status" | "progress_percent">[];
-  // For "Exporting version N".
+  // For "Download vN".
   versions: readonly { id: string; number: number }[];
-  // The newest export, followed through Realtime: the modal's job's export
-  // arriving starts the download.
+  // The reel's kept export (its newest one, not yet expired), followed
+  // through Realtime: Download shows while there is one.
   latestExport: ExportRef | null;
 }
 
-// How long "Downloaded" (with the fallback Download link, for a browser that
-// blocked the download no click started) shows before the modal closes.
-const DOWNLOADED_MS = 4000;
-
-// What the modal does with the file once its export arrived.
-type Fetch =
-  | { exportId: string; status: "downloaded"; url: string; fileName: string }
-  | { exportId: string; status: "failed" };
-
-// Starts a download with no click: a programmatic anchor click on the signed
-// link (an attachment, so it downloads, never plays).
-function startDownload(url: string, fileName: string) {
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = fileName;
-  anchor.rel = "noopener";
-  anchor.style.display = "none";
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-}
-
-// Export on the reel page as one action: the button queues a `render` job for
-// the current version and opens a modal that follows it live (an
-// indeterminate bar until the render step runs, then its percent). When the
-// job's export arrives the file downloads by itself, "Downloaded" shows
-// briefly and the modal closes. Nothing is kept or offered afterwards:
-// exporting again renders again. Closing the modal (Cancel, Escape or the
-// close control) while the render is live cancels it (`cancel_job`).
+// Export on the reel page, never in the way. The button queues a `render` job
+// for the current version; the panel then shows its progress in place
+// (`Exporting… 40%`) with a Cancel button, and the owner may leave: only
+// Cancel ends an export (`cancel_job`), leaving the page never does. While the
+// export runs, editing this reel is off, and the panel says so. The finished
+// MP4 is kept for 48 hours: Download shows here (and in the reels list) while
+// it is. When the export this page was following finishes with the page still
+// open, the file also downloads by itself; anywhere else nothing pops up.
 export function ExportPanel({ reel, jobs, steps, versions, latestExport }: Props) {
   const router = useRouter();
-  const dialogRef = useRef<HTMLDialogElement>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  // The render job the modal follows: the one Export queued, or the live one
-  // a page opened during an export picks up again.
-  const [jobId, setJobId] = useState<string | null>(() => liveRenderJobId(reel, jobs));
-  const [fetched, setFetched] = useState<Fetch | null>(null);
   const reelId = reel.id;
+  // The export this page follows: the one Export queued here, or a live one
+  // found on open or started elsewhere. It stays the followed one after it
+  // ends, so its result (the download by itself, a failure) shows once.
+  const liveId = liveRenderJobId(jobs);
+  const [followedId, setFollowedId] = useState<string | null>(liveId);
+  if (liveId !== null && liveId !== followedId) setFollowedId(liveId);
 
+  const progress = followedId ? exportProgress(followedId, jobs, steps, latestExport) : null;
+  const running = exportRunning(progress);
+  const readyId = progress?.kind === "ready" ? progress.exportId : null;
   const blockedReason = exportBlockedReason(reel, jobs);
-  const disabled = busy || blockedReason !== null;
-  const state = jobId ? exportModalState(jobId, jobs, steps, latestExport) : null;
-  const job = jobId ? jobs.find((candidate) => candidate.id === jobId) : undefined;
-  const versionId = job?.version_id ?? reel.current_version_id;
-  const versionNumber = versions.find((version) => version.id === versionId)?.number ?? null;
-  const readyId = state?.kind === "ready" ? state.exportId : null;
-  const open = jobId !== null && state?.kind !== "cancelled";
+  const keptVersion = latestExport
+    ? (versions.find((version) => version.id === latestExport.version_id)?.number ?? null)
+    : null;
 
-  // The modal is a native dialog: shown and closed with the job it follows.
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    if (open && !dialog.open) dialog.showModal();
-    if (!open && dialog.open) dialog.close();
-  }, [open]);
-
-  // The job's export arrived: sign it once and download it at once.
+  // The followed export finished with this page open: download it at once,
+  // one time. Nothing is shown for it but the Download button, which is also
+  // the way to the file when the browser blocked a download no click started.
   useEffect(() => {
     if (!readyId) return;
     let active = true;
-    void loadExport(reelId, readyId).then(
-      (result) => {
-        if (!active) return;
-        if (result.status === "signed-out") {
-          router.refresh();
-          return;
-        }
-        if (result.status !== "ready") {
-          setFetched({ exportId: readyId, status: "failed" });
-          return;
-        }
-        startDownload(result.url, result.fileName);
-        capture("studio_export_downloaded", { reel_id: reelId });
-        setFetched({
-          exportId: readyId,
-          status: "downloaded",
-          url: result.url,
-          fileName: result.fileName,
-        });
-      },
-      () => {
-        if (active) setFetched({ exportId: readyId, status: "failed" });
-      },
-    );
+    void downloadExport(reelId, readyId).then((outcome) => {
+      if (!active) return;
+      if (outcome === "signed-out") router.refresh();
+      else if (outcome === "downloaded") setMessage("Downloaded");
+    });
     return () => {
       active = false;
     };
   }, [readyId, reelId, router]);
-
-  const downloaded = fetched?.status === "downloaded" && fetched.exportId === readyId;
-  // "Downloaded" shows briefly, then the modal closes by one timeout.
-  useEffect(() => {
-    if (!downloaded) return;
-    const timer = setTimeout(() => {
-      setJobId(null);
-      setFetched(null);
-    }, DOWNLOADED_MS);
-    return () => clearTimeout(timer);
-  }, [downloaded]);
 
   async function exportNow() {
     setBusy(true);
@@ -139,8 +85,7 @@ export function ExportPanel({ reel, jobs, steps, versions, latestExport }: Props
       }
       if (sent.status === "queued") {
         capture("studio_export_requested", { reel_id: reelId });
-        setFetched(null);
-        setJobId(sent.jobId);
+        setFollowedId(sent.jobId);
         return;
       }
       setMessage(sent.status === "blocked" ? sent.reason : "The export was not started. Try again");
@@ -151,163 +96,119 @@ export function ExportPanel({ reel, jobs, steps, versions, latestExport }: Props
     }
   }
 
-  // Cancel, Escape and the close control all end here: a live render is
-  // cancelled, then the modal closes at once (the job's row follows live).
-  function close() {
-    const following = jobId;
-    const live = state !== null && exportCancellable(state);
-    setJobId(null);
-    setFetched(null);
-    if (!following || !live) return;
-    void cancelExport(following).then(
-      (result) => {
-        if (result.status === "signed-out") router.refresh();
-        else if (result.status === "failed") setMessage("The export was not cancelled");
-      },
-      () => setMessage("The export was not cancelled"),
-    );
+  // The only way an export ends early. The job's row follows live.
+  async function cancel() {
+    if (!followedId) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      const result = await cancelExport(followedId);
+      if (result.status === "signed-out") router.refresh();
+      else if (result.status === "failed") setMessage("The export was not cancelled");
+    } catch {
+      setMessage("The export was not cancelled");
+    } finally {
+      setBusy(false);
+    }
   }
 
-  const title = versionNumber === null ? "Exporting" : `Exporting version ${versionNumber}`;
-  const failedFetch = fetched?.status === "failed" && fetched.exportId === readyId;
-  let body: ReactNode = null;
-  if (state?.kind === "failed") {
-    body = (
-      <p data-testid="export-modal-status" className="text-sm text-danger">
-        The export failed. Try again
-      </p>
-    );
-  } else if (downloaded) {
-    body = (
-      <>
-        <p data-testid="export-modal-status" className="text-sm font-medium">
-          Downloaded
-        </p>
-        <p className="text-xs text-muted">
-          Not in your downloads?{" "}
-          <a
-            data-testid="export-fallback"
-            href={fetched.url}
-            download={fetched.fileName}
-            onClick={() => capture("studio_export_downloaded", { reel_id: reelId })}
-            className="font-medium text-accent underline"
-          >
-            Download
-          </a>
-        </p>
-      </>
-    );
-  } else if (failedFetch) {
-    body = (
-      <p data-testid="export-modal-status" className="text-sm text-danger">
-        The file could not be fetched. Export again
-      </p>
-    );
-  } else if (state) {
-    const percent = state.kind === "rendering" ? state.percent : null;
-    const label =
-      state.kind === "waiting"
-        ? state.label
-        : state.kind === "rendering"
-          ? `Rendering, ${state.percent}%`
-          : "Downloading";
-    body = (
-      <>
-        <div
-          role="progressbar"
-          aria-label="Export progress"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={percent ?? undefined}
-          data-testid="export-progress"
-          data-percent={percent ?? ""}
-          className="h-2 w-full overflow-hidden bg-raised"
-        >
-          {percent === null ? (
-            <div className="h-full w-1/3 animate-pulse bg-primary/60" />
-          ) : (
-            <div
-              className="h-full bg-primary transition-[width]"
-              style={{ width: `${percent}%` }}
-            />
-          )}
-        </div>
-        <p data-testid="export-modal-status" className="text-sm text-muted">
-          {label}
-        </p>
-      </>
-    );
-  }
+  const percent = progress?.kind === "rendering" ? progress.percent : null;
+  const failed = progress?.kind === "failed" && liveId === null;
 
   return (
     <section
       aria-labelledby="export-heading"
+      data-testid="export-panel"
+      data-export-state={running ? "exporting" : "idle"}
       className="flex min-w-0 flex-col items-end gap-0.5 text-right"
     >
       <h2 id="export-heading" className="sr-only">
         Export
       </h2>
-      <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
-        <p
-          id="export-reason"
-          data-testid="export-blocked-reason"
-          className="max-w-[9rem] text-xs text-muted sm:max-w-[18rem]"
-        >
-          {blockedReason ?? ""}
-        </p>
-        <button
-          type="button"
-          data-testid="export-button"
-          onClick={exportNow}
-          disabled={disabled}
-          aria-describedby="export-reason"
-          className="rounded-reel bg-primary px-4 py-1.5 text-sm font-semibold text-on-primary enabled:hover:opacity-90 disabled:opacity-50"
-        >
-          Export
-        </button>
-      </div>
-      <p aria-live="polite" className="text-xs break-words empty:hidden">
-        {message}
-      </p>
-      <dialog
-        ref={dialogRef}
-        data-testid="export-modal"
-        aria-labelledby="export-modal-heading"
-        onCancel={(event) => {
-          // Escape: closed through close(), which cancels a live render.
-          event.preventDefault();
-          close();
-        }}
-        className="m-auto w-[min(24rem,calc(100%-2rem))] border border-line bg-surface p-5 text-left text-ink backdrop:bg-black/60"
+      {running && progress ? (
+        <>
+          <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
+            <div className="flex min-w-0 flex-col items-end gap-1">
+              <p
+                role="status"
+                data-testid="export-status"
+                className="text-sm font-medium whitespace-nowrap"
+              >
+                {exportProgressLabel(progress)}
+              </p>
+              <div
+                role="progressbar"
+                aria-label="Export progress"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={percent ?? undefined}
+                data-testid="export-progress"
+                data-percent={percent ?? ""}
+                className="h-1.5 w-28 overflow-hidden bg-raised sm:w-40"
+              >
+                {percent === null ? (
+                  <div className="h-full w-1/3 animate-pulse bg-primary/60" />
+                ) : (
+                  <div
+                    className="h-full bg-primary transition-[width]"
+                    style={{ width: `${percent}%` }}
+                  />
+                )}
+              </div>
+            </div>
+            <button
+              type="button"
+              data-testid="export-cancel"
+              onClick={() => void cancel()}
+              disabled={busy}
+              className="border border-line px-3 py-1.5 text-sm hover:bg-raised disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+          <p
+            data-testid="export-editing-off"
+            className="max-w-[14rem] text-xs text-muted sm:max-w-[26rem]"
+          >
+            You can leave this page, the export keeps going. {EDITING_OFF_WHILE_EXPORTING}
+          </p>
+        </>
+      ) : (
+        <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
+          <p
+            id="export-reason"
+            data-testid="export-blocked-reason"
+            className="max-w-[9rem] text-xs text-muted sm:max-w-[18rem]"
+          >
+            {blockedReason ?? ""}
+          </p>
+          {latestExport && (
+            <DownloadExportButton
+              reelId={reelId}
+              exportId={latestExport.id}
+              variant="button"
+              label={keptVersion === null ? "Download" : `Download v${keptVersion}`}
+            />
+          )}
+          <button
+            type="button"
+            data-testid="export-button"
+            onClick={() => void exportNow()}
+            disabled={busy || blockedReason !== null}
+            aria-describedby="export-reason"
+            className="rounded-reel bg-primary px-4 py-1.5 text-sm font-semibold text-on-primary enabled:hover:opacity-90 disabled:opacity-50"
+          >
+            Export
+          </button>
+        </div>
+      )}
+      <p
+        aria-live="polite"
+        data-testid="export-message"
+        className="text-xs break-words empty:hidden"
       >
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <h2 id="export-modal-heading" className="text-lg font-semibold">
-            {title}
-          </h2>
-          <button
-            type="button"
-            aria-label="Close"
-            data-testid="export-modal-close"
-            onClick={close}
-            className="flex size-8 items-center justify-center border border-line text-base hover:bg-raised"
-          >
-            <span aria-hidden="true">&times;</span>
-          </button>
-        </div>
-        <div aria-live="polite" className="flex flex-col gap-2">
-          {body}
-        </div>
-        <div className="mt-4 flex justify-end">
-          <button
-            type="button"
-            data-testid="export-cancel"
-            onClick={close}
-            className="border border-line px-3 py-1 text-sm hover:bg-raised"
-          >
-            {state && exportCancellable(state) ? "Cancel" : "Close"}
-          </button>
-        </div>
-      </dialog>
+        {message || (failed ? "The export failed. Try again" : "")}
+      </p>
     </section>
   );
 }

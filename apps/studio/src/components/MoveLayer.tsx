@@ -38,8 +38,12 @@ interface Props {
   // shows the component there at once; null when a drag is cancelled.
   onDragFrame: (component: PlacedComponent, drag: Drag | null) => void;
   // Whether anything was moved (Save is off until then), and the save's state.
+  // `saving` also freezes the editor (no drag, no button); `frozenReason` is
+  // set when it is frozen for another reason than a save (the reel is
+  // exporting), so Save keeps its own word.
   changed: boolean;
   saving: boolean;
+  frozenReason?: string | null;
   message: string;
   onSave: () => void;
   onCancel: () => void;
@@ -114,6 +118,7 @@ export function MoveLayer({
   onDragFrame,
   changed,
   saving,
+  frozenReason = null,
   message,
   onSave,
   onCancel,
@@ -297,10 +302,12 @@ export function MoveLayer({
           data-testid="move-save"
           onClick={onSave}
           disabled={saving || !changed}
-          title={changed ? "Save as a new version" : "Move or resize a text first"}
+          title={
+            frozenReason ?? (changed ? "Save as a new version" : "Move or resize a text first")
+          }
           className="h-7 flex-none border border-white bg-white px-2 font-semibold text-black hover:bg-white/85 disabled:opacity-50"
         >
-          {saving ? "Saving" : "Save"}
+          {saving && !frozenReason ? "Saving" : "Save"}
         </button>
       </div>
       {/* The centre guides: a thin line while the dragged box's centre is on it. */}

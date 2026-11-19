@@ -21,7 +21,7 @@ export const JOB_KINDS = [
 ] as const;
 export type JobKind = (typeof JOB_KINDS)[number];
 
-// `cancelled`: the owner closed a render's export modal (`cancel_job`).
+// `cancelled`: the owner pressed Cancel on a running export (`cancel_job`).
 export const JOB_STATUSES = [
   "queued",
   "running",

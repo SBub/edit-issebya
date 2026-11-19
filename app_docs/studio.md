@@ -73,6 +73,8 @@ definer`, executable by `authenticated` only, revoked from `public`, `anon` and 
   unavailable, maps `P0002` to `not-found`, and captures any other error as
   `studio: reel not deleted` and answers `failed`. `apps/studio/src/app/reel-actions.ts` is the
   server action that calls it.
+- A reel with a kept export has a Download icon left of the bin (`DownloadExportButton.tsx`,
+  `app_docs/export.md`).
 - `apps/studio/src/components/DeleteReelButton.tsx`: the bin in each reels tile's bottom-right
   corner (accessible name `Delete reel`, always visible, 44 px on a phone, 32 px from `sm`): a
   plain bin in ink with no background or shape, square like the rest of the studio
@@ -156,12 +158,18 @@ job for own reel`) and no new grant. See `app_docs/change-requests.md`.
 - `supabase/migrations/20261103164248_one_step_export.sql`: job status `cancelled`, set only by
   `cancel_job(p_job_id)` (`security definer`, `authenticated` may execute, never `anon`): the owner
   of the reel cancels their own `render` job while it is `queued`, `running` or `waiting_ai` and has
-  no export. Exports now expire 1 hour after they are made. See `app_docs/export.md`.
-- `claim_job(p_worker, p_lease_seconds)`: one statement picks the oldest `queued` job, or a
+  no export. See `app_docs/export.md`.
+- `supabase/migrations/20261118151744_export_kept_48_hours.sql`: an export's file is kept 48 hours
+  (`export_keep_interval()`), and only the newest one of a reel. See `app_docs/export.md`.
+- `claim_job(p_worker, p_lease_seconds, p_only_kinds default null, p_except_kinds default null)`:
+  one statement picks the oldest `queued` job, or a
   `running` one whose lease expired, with `for update skip locked`, then takes the lease and counts
   an attempt. Only `service_role` may execute it. It takes one job per reel at a time, in order,
   and skips a `waiting_ai` job until its `not_before` (see `app_docs/failures.md`). It never
-  claims a `cancelled` job.
+  claims a `cancelled` job. The two kind lists are the worker's lanes
+  (`supabase/migrations/20261118151340_worker_lanes.sql`, see Worker below): `p_only_kinds` takes
+  only those kinds, `p_except_kinds` leaves those kinds out, and both null is any kind. The filter
+  only narrows what the caller may take: the per-reel order still counts every kind.
 - The worker renews its lease while it works (`apps/worker/src/lease.ts`); a failed renewal aborts
   the work and writes nothing more, since another worker may hold the job. A render job also
   checks every 5 seconds whether its owner cancelled it, and a cancel aborts the work the same
@@ -228,11 +236,30 @@ job for own reel`) and no new grant. See `app_docs/change-requests.md`.
   `WORKER_POLL_INTERVAL_SECONDS` reading only ids (a claimable job's, and one due `storage_deletions`
   row's under its prefix), skips claiming below
   `WORKER_MIN_FREE_DISK_GB` and records the reason in `worker_status`, which the reel page's
-  overlay shows for a queued job, slims storage at most hourly between jobs, removes each job's scratch folder
-  and runs one job at a time (`loop.ts`). Before each claim it runs the deletion pass
-  (`storage-deletions.ts`), and the poll signals the drainer when a due `storage_deletions` row
+  overlay shows for a queued job, slims storage at most hourly while no job runs, removes each job's scratch folder
+  and runs its jobs in two lanes (below). Before a claim, while no lane runs a job, it runs the deletion pass
+  (`storage-deletions.ts`), and the poll signals the lanes when a due `storage_deletions` row
   waits and no job does (it reads only that row's `id` and never writes; held keys are dropped by
   the pass); `once` never runs it. See `app_docs/storage.md`.
+- Lanes (`JOB_LANES` in `queue.ts`, `createLanes` in `loop.ts`). The long-running worker runs two
+  lanes at the same time, each one job at a time:
+  - `export`: `render` jobs only (`claim_job`'s `p_only_kinds`);
+  - `main`: every other kind (`process`, `owner_edit`, `relayout`, `restore`, `start_over`,
+    `describe_photo`, ...; `p_except_kinds`), so a new kind lands here with no change.
+
+  So an upload, a photo or an edit of another reel never waits behind an export, and two exports
+  never run together. A reel's own jobs still run one at a time, in order, whatever their lane: that
+  rule is `claim_job`'s (`app_docs/failures.md`). Each lane is its own drainer; a Realtime insert,
+  the poll and start-up wake both. Every job keeps its own lease, cancel check, retry, scratch
+  folder (`<scratch>/<job id>`), Chrome folders and memory samples (each tool's own process
+  group), so nothing is shared between two running jobs but the machine. Both lanes go through
+  the disk guard and write the same `worker_status` row. On SIGINT or SIGTERM the worker waits
+  for the jobs running in both lanes. `once` claims with no filter: one job of any kind.
+  Two jobs at once need the memory of both: see `app_docs/worker-container.md`, "Resources".
+  Deploy order: apply `20261118151340_worker_lanes.sql` before starting a worker that claims in
+  lanes (against the old two-argument `claim_job` its claims fail and nothing runs); a worker from
+  before the lanes keeps working after the migration, since both new arguments default to null.
+
 - `apps/worker/src/steps/receive.ts`: the one placeholder step. It HEADs the source in R2, writes a
   step `footage received, 12.3 MB`, and `run-job.ts` then marks the job `done` and the reel
   `received` (or `failed` with an error tail).
@@ -325,8 +352,11 @@ job for own reel`) and no new grant. See `app_docs/change-requests.md`.
   more than 10 minutes in the future, a version two files share or a malformed prefix; turbo
   re-runs it when `supabase/migrations/` changes), `apps/web/src/lib/studio-rewrites.test.ts`,
   `apps/worker/src/**/*.test.ts` and `packages/storage/src/**/*.test.ts` (`yarn test`), among them
-  `reel-server.test.ts` (`deleteReel`), `storage-deletions.test.ts` (the deletion pass) and
-  `reel-deleted.test.ts` (a job whose reel is deleted ends `deleted`).
+  `reel-server.test.ts` (`deleteReel`), `storage-deletions.test.ts` (the deletion pass),
+  `reel-deleted.test.ts` (a job whose reel is deleted ends `deleted`), and `loop.test.ts` with
+  `queue.test.ts` for the lanes (a photo's job and an upload's run while a render runs, two renders
+  never run together, the pass between jobs never runs under a job, each lane's kinds go to
+  `claim_job`).
 - DB integration: `apps/studio/db-tests/` (`yarn test:db`): RLS on every public table, owner
   isolation, the upload path and `finish_upload`, `claim_job`'s lease (`jobs.test.ts`), `save_version`, version immutability and its RLS
   (`versions.test.ts`), `stored_files`, `worker_status`, the slimming, export expiry and

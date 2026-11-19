@@ -23,7 +23,7 @@ export type ExportRequestResult =
 // Queues a `render` job for the reel's current version. The version is read
 // here under RLS, never chosen by the browser; the rule the button follows is
 // checked again, so a stale tab or a double press cannot queue a second
-// render of the same version.
+// export of a reel that is already exporting.
 export async function requestExport(reelId: string): Promise<ExportRequestResult> {
   if (typeof reelId !== "string" || !isReelId(reelId)) return { status: "failed" };
   const supabase = await createSupabaseServerClient();
@@ -89,10 +89,11 @@ export type ExportFileResult =
   | { status: "failed" };
 
 // One export of the reel, read under RLS as the signed-in owner, with a
-// download link signed for no longer than the time left until its expiry
-// (`Content-Disposition: attachment`, a readable name). The modal fetches it
-// once, the moment the export row arrives, and downloads it at once: nothing
-// is kept or offered afterwards. An expired export is never signed. The key
+// download link signed for no longer than the time left until its expiry, an
+// hour at most (`Content-Disposition: attachment`, a readable name). Called
+// at the click on Download (the reels list's icon, the reel page's button)
+// and once by the reel's page when the export it follows finishes. An expired
+// export is never signed. The key
 // comes only from a row owners cannot write, and is checked to be this reel's
 // export before signing.
 export async function loadExport(reelId: string, exportId: string): Promise<ExportFileResult> {
@@ -172,9 +173,10 @@ export type CancelExportResult =
   | { status: "failed" };
 
 // Cancels the owner's own render job through `cancel_job` (the only path: the
-// owner has no update right on `jobs`). The database refuses another owner's
-// job, any other kind, a finished job and one whose export is recorded, all
-// as `not-cancelled`.
+// owner has no update right on `jobs`). Only the Cancel button calls it:
+// leaving the page never cancels an export. The database refuses another
+// owner's job, any other kind, a finished job and one whose export is
+// recorded, all as `not-cancelled`.
 export async function cancelExport(jobId: string): Promise<CancelExportResult> {
   if (typeof jobId !== "string" || !isReelId(jobId)) return { status: "failed" };
   const supabase = await createSupabaseServerClient();

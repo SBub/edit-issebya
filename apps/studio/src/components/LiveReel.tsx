@@ -23,7 +23,7 @@ import { ReelScreen } from "@/components/ReelScreen";
 import { StartOverButton } from "@/components/StartOverButton";
 import { VersionList } from "@/components/VersionList";
 import { changeBlockedReason } from "@/lib/change-requests";
-import type { ExportRef } from "@/lib/exports";
+import { EXPORT_REF_COLUMNS, type ExportRef, exportingReason } from "@/lib/exports";
 import { startOverQueueNote } from "@/lib/failures";
 import { type FailureAction, overlayState } from "@/lib/progress-overlay";
 import { REEL_DETAIL_COLUMNS, type ReelDetail, reelName } from "@/lib/reels";
@@ -43,8 +43,9 @@ interface Snapshot {
   jobs: JobRow[];
   steps: StepRow[];
   versions: VersionListRow[];
-  // The newest export and its job: the export modal downloads its job's
-  // export the moment it arrives.
+  // The reel's kept export (its newest one, not yet expired): Download shows
+  // while there is one, and the export this page follows downloads by itself
+  // the moment its row arrives.
   latestExport: ExportRef | null;
   // Every worker's row: why it is not claiming (free disk) and its heartbeat.
   workerStatus: WorkerStatusRow[];
@@ -96,8 +97,9 @@ async function readSnapshot(supabase: SupabaseClient, id: string): Promise<Snaps
       .returns<VersionListRow[]>(),
     supabase
       .from("exports")
-      .select("id, job_id")
+      .select(EXPORT_REF_COLUMNS)
       .eq("reel_id", id)
+      .gt("expires_at", new Date().toISOString())
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle<ExportRef>(),
@@ -124,7 +126,9 @@ async function readSnapshot(supabase: SupabaseClient, id: string): Promise<Snaps
   };
 }
 
-// The reel page on one screen (ReelScreen): the header with Export, the
+// The reel page on one screen (ReelScreen): the header with Export (its
+// progress and Cancel while the reel exports, Download while an export is
+// kept), the
 // current version's preview and tracks timeline, the progress
 // overlay over the preview (what the studio is doing in plain words, how far
 // along, the waiting and offline lines, "New version N", a failure with its
@@ -284,7 +288,7 @@ export function LiveReel({
         { event: "INSERT", schema: "public", table: "exports", filter: `reel_id=eq.${id}` },
         (payload) => {
           // Exports are never updated; a new one is the newest.
-          setLatestExport(pickColumns<ExportRef>(payload.new, "id, job_id"));
+          setLatestExport(pickColumns<ExportRef>(payload.new, EXPORT_REF_COLUMNS));
         },
       )
       .on(
@@ -320,7 +324,9 @@ export function LiveReel({
     };
   }, [id]);
 
-  const blockedReason = changeBlockedReason(reel);
+  // Editing this reel is off while it exports (the reason is shown beside
+  // every editing control); other reels are never held.
+  const blockedReason = changeBlockedReason(reel, jobs);
   const queueNote = startOverQueueNote(jobs);
   const versionsById = new Map(versions.map((version) => [version.id, version]));
   const waitingReason = waitingReasonOf(workerStatus);
@@ -427,6 +433,7 @@ export function LiveReel({
                 versionId={currentId}
                 jobs={jobs}
                 ownerEdit={ownerEdit}
+                editBlockedReason={exportingReason(jobs)}
               />
               <ProgressOverlay
                 state={overlay}

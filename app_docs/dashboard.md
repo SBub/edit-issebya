@@ -49,7 +49,7 @@ Metrics, as defined by the code:
 - Storage in total (distinct live `r2_key`, so a shared object counts once), per reel and per step,
   from `stored_files` rows with `deleted_at` null.
 - Worker load and capacity (registered last in `insights/index.ts`, in this order). The worker runs
-  one job at a time on the owner's Mac; these six size its load and a future server, from columns
+  one export and one other job at a time on the owner's Mac (two lanes, `app_docs/studio.md`); these six size its load and a future server, from columns
   already synced. Every job time below is `jobs.started_at` to `jobs.finished_at`, and `claim_job`
   overwrites `started_at` when it claims a job again after a lost lease, so such a job counts its
   last attempt only.

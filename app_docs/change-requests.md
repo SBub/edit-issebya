@@ -44,10 +44,11 @@ restore job for own reel`: own reel, status `queued`, and for a restore a versio
   Status, lease, attempt and error columns stay the worker's.
 - `apps/studio/src/app/change-actions.ts`: server actions `requestRestore` and `requestStartOver`. Both
   use the owner's own client (RLS), re-read the reel, and refuse with `blocked` only when
-  `changeBlockedReason` says so: the reel is `refused`, still `uploading`, or `failed` with no
-  current version. `requestRestore` refuses the already current version. Errors are logged without
+  `changeBlockedReason` says so: the reel is `refused`, still `uploading`, `failed` with no
+  current version, or exporting (a live `render` job of the reel, read by `openReel`; editing a
+  reel is off while it exports, `app_docs/export.md`). `requestRestore` refuses the already current version. Errors are logged without
   the job's content.
-- `apps/studio/src/lib/change-requests.ts`: `changeBlockedReason` (null when open; otherwise `This clip was refused; upload another clip`,
+- `apps/studio/src/lib/change-requests.ts`: `changeBlockedReason(reel, jobs)` (null when open; otherwise `Editing is off while this reel exports. Cancel the export to edit now` while an export of the reel is live, or `This clip was refused; upload another clip`,
   `Changes open once the upload finishes` or `Processing failed; press Try again on the preview
 first`, Try again being the progress overlay's, `app_docs/status.md`), `versionOrigin`,
   `versionTitle` and `jobRequestLabel` (the text shown beside a version or a job; a render job reads

@@ -289,23 +289,23 @@ async function capturePreview(name: string, moments = MOMENTS): Promise<Capture[
 }
 
 // Presses Export, runs the real render through the worker, waits for the
-// export modal to close after the download, and returns the MP4 on disk and
-// the job's id.
+// reel's page to show the export ended, and returns the MP4 on disk and the
+// job's id.
 async function exportNow(name: string): Promise<{ mp4: string; jobId: string }> {
   const button = page.getByTestId("export-button");
   await expect(button).toBeEnabled({ timeout: 30_000 });
   await button.click();
-  await expect(page.getByTestId("export-blocked-reason")).toHaveText("Exporting this version...");
+  await expect(page.getByTestId("export-panel")).toHaveAttribute("data-export-state", "exporting");
   const worker = await runWorkerOnce(
     { R2_KEY_PREFIX: CACHE_PREFIX, E2E_MOCK_RENDER: "", E2E_MOCK_MASK: "" },
     { timeoutMs: RENDER_TIMEOUT_MS },
   );
   expect(worker.code, worker.output).toBe(0);
-  // The export downloads by itself and the modal closes a few seconds later.
-  // Until it closes it covers the page, and the ruler seeks with a raw pointer
-  // click (no actionability wait), so the next capture's click would land on
-  // the modal.
-  await expect(page.getByTestId("export-modal")).toBeHidden({ timeout: 30_000 });
+  // The export downloads by itself (the page is still open) and the panel
+  // goes back to Export. Nothing covers the page meanwhile.
+  await expect(page.getByTestId("export-panel")).toHaveAttribute("data-export-state", "idle", {
+    timeout: 30_000,
+  });
   const { data, error } = await admin
     .from("exports")
     .select("job_id, r2_key")

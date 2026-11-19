@@ -12,7 +12,8 @@ export interface SlimmingCounts {
 
 // One slimming pass under the worker's key prefix: the database selects and
 // marks deleted, in one statement each, the rebuildable files no reel needs
-// any more and the files of expired exports; then each returned object is
+// any more and the files of exports no longer kept (expired after 48 hours,
+// or replaced by a newer export of the same reel); then each returned object is
 // deleted from storage (the raw storage, never a job's). A failed delete is
 // logged and the pass goes on: the row stays deleted, and a later job that
 // finds the object records a fresh row.
@@ -52,7 +53,7 @@ export async function runSlimming({
   };
   log(
     `slimming: ${counts.rebuildable} rebuildable files (${formatBytes(counts.rebuildableBytes)}), ` +
-      `${counts.exports} expired exports (${formatBytes(counts.exportBytes)}) deleted`,
+      `${counts.exports} expired or replaced exports (${formatBytes(counts.exportBytes)}) deleted`,
   );
   return counts;
 }
