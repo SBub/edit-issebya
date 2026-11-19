@@ -242,7 +242,8 @@ lefthook runs prettier, `yarn lint`, `yarn typecheck` and `yarn knip` on every c
 (`.github/workflows/ci.yml`, job `check`) runs format check, lint, typecheck, knip, unit and build,
 then starts its own fresh Supabase stack (which applies the migrations), exports its URL and keys
 under allow-listed names (never Supabase's `STUDIO_URL`), builds again, and runs `test:db` and E2E,
-on every pull request and push to `develop` and `master`.
+on every pull request and push to `develop` and `master`. A push to `develop` skips the ffmpeg
+install and `test:e2e` (the PR already ran them); a new push to a PR cancels its older run.
 
 ## Ports
 

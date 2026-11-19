@@ -184,7 +184,8 @@ None of its own. It needs the same R2 variables as footage (`app_docs/storage.md
 stream group sections (a HEIC tile grid), which older ffprobe rejects. The
 worker's `yarn doctor` fails its ffmpeg line on an older ffmpeg or ffprobe, and CI installs the
 static ffmpeg 8.0.1 build (`mwader/static-ffmpeg`, pinned by digest in `.github/workflows/ci.yml`)
-instead of Ubuntu's 6.1. `E2E_MOCK_AI_SCRIPT` scripts the AI answer in specs.
+instead of Ubuntu's 6.1 (on pull requests and `master` only; pushes to `develop` skip it with E2E).
+`E2E_MOCK_AI_SCRIPT` scripts the AI answer in specs.
 `fixtures/photos/sample.jpg` and `sample.heic` are made by `scripts/make-test-photos.sh` (macOS
 only, run by hand; CI uses the committed files).
 

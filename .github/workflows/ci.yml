@@ -6,6 +6,13 @@ on:
   push:
     branches: [develop, master]
 
+# A new push to a pull request cancels the run still in progress for the older
+# commit, since only the newest commit's result matters. Pushes to develop and
+# master are never cancelled mid-run (cancel-in-progress is false for them).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   check:
     name: check
@@ -41,9 +48,10 @@ jobs:
       # (/usr/bin/time -v); its unit tests spawn real processes under it.
       - run: test -x /usr/bin/time || (sudo apt-get update && sudo apt-get install -y time)
       # Before `yarn test`: packages/edit's browser project (Vitest browser
-      # mode) runs the builder in Chromium. One install still covers both E2E
-      # suites later: the studio and the edit package pin the same Playwright
-      # version, and browsers live in the shared cache.
+      # mode) runs the builder in Chromium, so this install stays on every run,
+      # including pushes to develop. Only the E2E suites below skip there.
+      # One install still covers both E2E suites later: the studio and the edit
+      # package pin the same Playwright version, and browsers live in the shared cache.
       - run: yarn workspace @edit-issebya/web playwright install --with-deps chromium webkit
       - run: yarn test
       # Built with no studio variables: proves both apps build without them.
@@ -80,7 +88,10 @@ jobs:
       # ffmpeg/ffprobe 8.0.1 (the owner's version) come from an image pinned
       # by digest, copied onto PATH; the last line fails the step on a build
       # without -show_stream_groups.
+      # Only E2E needs ffmpeg, so this step skips on pushes to develop: the PR's
+      # run already passed E2E before the merge. Master keeps the full run.
       - name: Install ffmpeg 8.0.1
+        if: github.event_name == 'pull_request' || github.ref == 'refs/heads/master'
         env:
           FFMPEG_IMAGE: mwader/static-ffmpeg:8.0.1@sha256:252705ff88532fa338e7065c21792756552f8fe7c212f84bc503d3c340689594
         run: |
@@ -92,5 +103,7 @@ jobs:
           echo "$RUNNER_TEMP/ffmpeg" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/ffmpeg/ffmpeg" -version | head -1
           "$RUNNER_TEMP/ffmpeg/ffprobe" -v error -show_stream_groups -print_format json fixtures/photos/sample.heic > /dev/null
-      # The browsers were installed before `yarn test`.
+      # The browsers were installed before `yarn test`. Skipped on pushes to
+      # develop, where the PR's run already passed E2E before the merge.
       - run: yarn test:e2e
+        if: github.event_name == 'pull_request' || github.ref == 'refs/heads/master'
