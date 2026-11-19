@@ -20,7 +20,11 @@ describe("GET /api/edit-assets/[...path]", () => {
     const expected = await readFile(
       new URL(`../../../../../../../packages/edit/${FONT}`, import.meta.url),
     );
-    expect(new Uint8Array(await answer.arrayBuffer())).toEqual(new Uint8Array(expected));
+    // Buffer.equals is one native compare. toEqual on the two Uint8Arrays walks a font's
+    // hundreds of thousands of bytes one by one and timed out under load.
+    const served = Buffer.from(await answer.arrayBuffer());
+    expect(served.length).toBe(expected.length);
+    expect(served.equals(expected)).toBe(true);
   });
 
   it("serves the click sound as audio/wav", async () => {
