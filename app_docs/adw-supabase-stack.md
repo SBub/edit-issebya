@@ -56,6 +56,10 @@ postgres-meta,studio,edge-runtime,logflare,vector,supavisor` (the services CI al
 - **Verification**: after a reset, the applied versions (`supabase migration list --local`, the
   column the CLI calls "Remote") must equal the migration files' versions exactly, naming any
   `missing` or `extra`; only then is the fingerprint written.
+- **Readiness**: `up` and `reset` then wait (up to 120 s) until every container the CLI labels with
+  the project id and that has a healthcheck reports healthy, and fail naming the ones that do not.
+  `db reset` restarts auth and realtime and returns while they are still starting; a Realtime
+  websocket opened in that window fails with "channel error: transport failure".
 - **Output**: `up` prints exactly `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `NEXT_PUBLIC_SUPABASE_URL`,
   `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` and `SUPABASE_DB_URL` (from `supabase status -o env`), never
   `STUDIO_URL`. The engine exports the hook's lines into every phase, where they override the
