@@ -53,7 +53,7 @@ describe("profiles RLS", () => {
     expect(forOther.error).not.toBeNull();
   });
 
-  it("lets the owner change their pair, and refuses a pair outside the six", async () => {
+  it("lets the owner change their pair, and refuses a pair outside the seven", async () => {
     const changed = await clientA
       .from("profiles")
       .update({ font_pair: "script" })
@@ -110,7 +110,7 @@ describe("profiles RLS", () => {
     expect(after?.find((row) => row.user_id === userB.id)?.font_pair).toBe("handwritten");
   });
 
-  it("refuses a pair outside the six through set_font_pair, and an anonymous caller", async () => {
+  it("refuses a pair outside the seven through set_font_pair, and an anonymous caller", async () => {
     const unknown = await clientA.rpc("set_font_pair", { p_font_pair: "primary" });
     expect(unknown.error).not.toBeNull();
     const anon = localSupabaseClient();

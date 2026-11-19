@@ -92,7 +92,7 @@ describe("runJobKind for a relayout", () => {
     expectOnly(r, "relayout");
   });
 
-  it("fails a relayout without a font pair, or with one outside the six, and runs nothing", () => {
+  it("fails a relayout without a font pair, or with one outside the seven, and runs nothing", () => {
     const r = runners();
     expect(() => runJobKind({ kind: "relayout", ...NONE, font_pair: null }, r)).toThrow(
       /relayout job has no font pair/,

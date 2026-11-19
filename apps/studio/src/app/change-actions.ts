@@ -165,7 +165,7 @@ export async function requestFontPair(input: {
 }): Promise<ChangeActionResult> {
   if (typeof input.reelId !== "string" || !isReelId(input.reelId)) return { status: "failed" };
   if (!isFontPairId(input.fontPair)) {
-    return { status: "invalid", reason: "Pick one of the six font pairs" };
+    return { status: "invalid", reason: "Pick one of the seven font pairs" };
   }
   const open = await openReel(input.reelId);
   if (!open.ok) return open.result;

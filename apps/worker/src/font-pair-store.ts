@@ -15,11 +15,11 @@ export async function ownerFontPair(db: SupabaseClient, ownerId: string): Promis
 }
 
 // The pair a profile row names. No row is the classic pair; a name that is not
-// one of the six is refused, never guessed at.
+// one of the seven is refused, never guessed at.
 export function fontPairOfRow(row: { font_pair?: unknown } | null): FontPairId {
   if (row === null) return DEFAULT_FONT_PAIR_ID;
   if (!isFontPairId(row.font_pair)) {
-    throw new Error(`profiles: font pair ${String(row.font_pair)} is not one of the six`);
+    throw new Error(`profiles: font pair ${String(row.font_pair)} is not one of the seven`);
   }
   return row.font_pair;
 }

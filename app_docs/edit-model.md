@@ -25,7 +25,7 @@ types until slice 9 brings the live preview.
 
 ### Format
 
-- `src/schema.ts`: `edit.json`, format 1: `format`, `preset` (`"issebya"`), `font_pair` (required: one of the six pair ids, `src/font-pairs.ts`; a version without it fails to parse with that reason, never read as classic), `duration`, `inputs`
+- `src/schema.ts`: `edit.json`, format 1: `format`, `preset` (`"issebya"`), `font_pair` (required: one of the seven pair ids, `src/font-pairs.ts`; a version without it fails to parse with that reason, never read as classic), `duration`, `inputs`
   (the pipeline outputs it was made from, each `{ step, fingerprint, file }`: `footage`,
   `transcript`, `head_track`) and `tracks`: `footage`, `captions`, `overlays`
   (`kind: "accent"`, or `kind: "hook"` for the written hook, below), `transitions` (the LIST items, `numbered`, the only kind, each with its `list` and `number`), `sounds` (`click`) and the optional
@@ -126,7 +126,7 @@ and rule 6 (`engine-place.ts`).
   reference drawing, which does not label it; it and the column's width
   (`PLATFORM_BUTTONS_WIDTH`, 100) are named constants the owner tunes by eye with the studio's
   Zones button. Module constants, not `Preset` fields: no preset and no change request moves them.
-- Fonts: a font pair (`src/font-pairs.ts`, `FONT_PAIRS`, the six approved pairs; `app_docs/font-pairs.md`)
+- Fonts: a font pair (`src/font-pairs.ts`, `FONT_PAIRS`, the seven approved pairs; `app_docs/font-pairs.md`)
   gives two roles. `artistic` (the classic pair: Playfair Display Italic) writes the accents, a transition's
   key phrase and number and the hook; `simple` (Inter Tight SemiBold) writes captions, the big word and a
   transition's lead-in. Each face is a static OFL instance in `assets/fonts/`. The builder lists a pair's

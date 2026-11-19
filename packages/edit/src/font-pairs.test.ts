@@ -28,7 +28,7 @@ async function tableTags(file: string): Promise<string[]> {
 }
 
 describe("FONT_PAIRS", () => {
-  it("holds the six approved pairs, classic first and the default", () => {
+  it("holds the seven pairs, classic first and the default", () => {
     expect(FONT_PAIR_IDS).toEqual([
       "classic",
       "script",
@@ -36,6 +36,7 @@ describe("FONT_PAIRS", () => {
       "handwritten",
       "retro",
       "bold",
+      "modern",
     ]);
     expect(Object.keys(FONT_PAIRS)).toEqual([...FONT_PAIR_IDS]);
     expect(DEFAULT_FONT_PAIR_ID).toBe("classic");
@@ -53,14 +54,21 @@ describe("FONT_PAIRS", () => {
       style: "italic",
     });
     expect(FONT_PAIRS.bold.simple).toMatchObject({ weight: 900 });
+    expect(FONT_PAIRS.modern.simple).toMatchObject({ family: "Inter Light", weight: 300 });
+    expect(FONT_PAIRS.modern.artistic).toMatchObject({
+      family: "Inter Tight Bold",
+      weight: 700,
+      style: "normal",
+    });
     for (const pair of Object.values(FONT_PAIRS)) {
       expect(pair.standsInFor.length).toBeGreaterThan(0);
       expect(pair.label.length).toBeGreaterThan(0);
     }
   });
 
-  it("recognises only the six ids", () => {
+  it("recognises only the seven ids", () => {
     expect(isFontPairId("retro")).toBe(true);
+    expect(isFontPairId("modern")).toBe(true);
     expect(isFontPairId("primary")).toBe(false);
     expect(isFontPairId(undefined)).toBe(false);
   });
@@ -115,5 +123,24 @@ describe("a version's font pair", () => {
     expect(() =>
       build(fixture.edit, fixture.transcript, fixture.headTrack, ISSEBYA_PRESET, measurer),
     ).toThrow(/set in classic, measured in script/);
+  });
+
+  it("builds in the modern pair with its two Inter files, measured by the same measurer", async () => {
+    const edit: Edit = { ...structuredClone(fixture.edit), font_pair: "modern" };
+    const measurer = await nodeMeasurer(FONT_PAIRS.modern);
+    const { html, assets } = build(
+      edit,
+      fixture.transcript,
+      fixture.headTrack,
+      ISSEBYA_PRESET,
+      measurer,
+    );
+    expect(assets.filter((asset) => asset.role === "font").map((asset) => asset.path)).toEqual([
+      "assets/fonts/Inter-Light.ttf",
+      "assets/fonts/InterTight-Bold.ttf",
+    ]);
+    expect(html).toContain('font-family: "Inter Light"');
+    expect(html).toContain('font-family: "Inter Tight Bold"');
+    expect(Object.keys(measurer.widths()).length).toBeGreaterThan(0);
   });
 });
