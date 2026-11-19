@@ -5,12 +5,15 @@ import {
   ISSEBYA_PRESET,
   type Measurer,
   type Preset,
+  type StoredVersion,
   type Transcript,
   type VersionBlobs,
   type VersionRows,
   build,
   editFromAnswer,
   headTrackSchema,
+  keepOwnerAdds,
+  ownerPictures,
   parseDecideAnswer,
   parseEdit,
   parseHookAnswer,
@@ -133,10 +136,41 @@ async function readAiRecord(
   return record;
 }
 
+// How far back a version's answer is looked for (`answerRecord`).
+const CHAIN_MAX = 200;
+
+// The AI record that holds a version's answer: its own, or, when it has none,
+// the record of the version it copies. A going back copies an old version's
+// bytes and no record, so its answer is the old version's; the walk goes back
+// through each going back and owner edit (which keep the answer and the item
+// ids) to the first version that has a record. Null when none has: the first
+// version, or a copy of it.
+async function answerRecord(
+  storage: Pick<Storage, "get">,
+  rows: VersionRows,
+  keyPrefix: string,
+  version: StoredVersion,
+): Promise<AiRecord | null> {
+  let at = version;
+  for (let hop = 0; hop < CHAIN_MAX; hop += 1) {
+    const record = await readAiRecord(storage, keyPrefix, version.reel_id, at.id);
+    if (record) return record;
+    const before = at.restored_from_id ?? at.edited_from_id;
+    if (!before) return null;
+    const row = await rows.get(before);
+    if (!row || row.reel_id !== version.reel_id) return null;
+    at = row;
+  }
+  return null;
+}
+
 // A re-layout job's one step (no AI call): the reel's current version placed
 // again in the job's font pair. Its answer is the one the version was decided
 // from (its AI record), so the words, the accents, the hook and the lists are
-// the same and only the layout moves. The result is saved as a new version
+// the same and only the layout moves. The owner's pictures do not depend on
+// the font, so they stay: a card the owner gave a library photo is placed
+// again showing it, and a card the owner added is kept as it was
+// (`ownerPictures`, `keepOwnerAdds`). The result is saved as a new version
 // after the current one, with the same AI record copied under the new id, so
 // a later re-layout of it finds the same answer. Cut-outs are made only for
 // spans the new placement needs; the cache reuses the rest.
@@ -188,7 +222,7 @@ export async function runRelayout({
             `${STEP}: current version does not parse: ${parsed.reasons.join("; ")}`,
           );
         }
-        const record = await readAiRecord(storage, keyPrefix, reelId, currentId);
+        const record = await answerRecord(storage, rows, keyPrefix, row);
         const answer = answerOfRecord(record, preset, transcript);
         span.setAttributes({
           "relayout.version": row.number,
@@ -212,12 +246,27 @@ export async function runRelayout({
           const measure = await measurer(fontPair);
           // The version is set in the target pair; the layout places it there.
           const current = { ...parsed.edit, font_pair: fontPair };
-          const composed = editFromAnswer(current, answer, preset, transcript, headTrack, measure);
-          if (!composed.ok) {
+          // The photos the owner swapped onto the answer's cards go with it:
+          // the engine places each such card at its photo's aspect.
+          const answered = editFromAnswer(
+            current,
+            answer,
+            preset,
+            transcript,
+            headTrack,
+            measure,
+            ownerPictures(parsed.edit),
+          );
+          if (!answered.ok) {
             throw new PermanentError(
-              `${STEP}: the answer no longer places: ${composed.reasons.join("; ")}`,
+              `${STEP}: the answer no longer places: ${answered.reasons.join("; ")}`,
             );
           }
+          // The cards the owner added are in no answer: kept as they were.
+          const composed = {
+            ...answered,
+            edit: keepOwnerAdds(parsed.edit, answered.edit, { transcript, preset }),
+          };
           const { checks } = build(
             withMasks(composed.edit, transcript, headTrack),
             transcript,

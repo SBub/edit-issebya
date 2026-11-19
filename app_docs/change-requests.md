@@ -97,7 +97,9 @@ version` as above; otherwise the version's `change_title`, falling back (version
 - `apps/worker/src/restore-step.ts`: the `restore` step. Calls `restoreVersion` from
   `@edit-issebya/edit`, which refuses a version of another reel before writing: a new version copies
   the old bytes, its parent is the current version, `restored_from_id` the old one, and it becomes
-  current. The step summary reads `version N: restored from version M`.
+  current. The step summary reads `version N: restored from version M`. It writes no AI record for
+  the new version: a later font pair change reads the answer of the version it copies
+  (`app_docs/font-pairs.md`, "The relayout job").
 - `apps/worker/src/queue.ts`: `ClaimedJob` carries `restore_version_id`. Only a `process` job moves
   the reel's status; a failed `restore` or `start_over` job fails the job and leaves the reel
   `processed` with its current version untouched.

@@ -77,11 +77,33 @@ The "stands in for" names are the owner's own words for the look each pair gives
   pair, makes only the cut-outs the new placement needs (the cache reuses the rest), and saves a new version
   after the current one. The AI record is copied under the new version's id, so a later relayout finds the
   same answer. A version with no AI record (the first version) is placed with no answer at all.
+- The answer of a version that has no AI record of its own is the answer of the version it copies
+  (`answerRecord`): a going back copies an old version's bytes and writes no record, so the relayout
+  walks back through each going back (`restored_from_id`) and owner edit (`edited_from_id`) to the first
+  version that has a record. Only a version with none on that whole path (the first version, or a going
+  back to it) is placed with no answer.
+- The owner's pictures do not depend on the font, so a relayout keeps them (`app_docs/photo-library.md`,
+  `app_docs/owner-edits.md`):
+  - A card of the answer that the owner gave a library photo (`Change picture`) is placed again showing
+    that photo. `ownerPictures(edit)` (`packages/edit/src/owner-add.ts`) reads the photos by the card's id
+    (`visual-N`, the Nth visual of the answer in every version placed from it), `editFromAnswer` takes them
+    as `pictures`, and the engine places each such card at its photo's aspect in place of its stand-in
+    (`placeEdit`'s `pictures`, `app_docs/edit-model.md`). The card's place and size are the engine's.
+  - A card the owner added (`Add picture here`, `owner-visual-N`) is in no answer, so the engine cannot
+    place it again: `keepOwnerAdds` puts it back as it was (its photo, word, time, box and turn), after the
+    engine's cards, with its click unless another sound of the new placement starts within the click's
+    gap of it.
+  - `inputs.photos` of the new version is written from its tracks (`editFromAnswer`, `keepOwnerAdds`),
+    never copied from the version before, so it names exactly the photos the new version shows.
+  - A card of the answer the engine finds no legal spot for in the new pair is left out like any element
+    (its `no-spot` note in the engine record, `app_docs/edit-model.md`), with its photo; the version
+    before keeps it.
 - Its spans and failure record are in `app_docs/measurement.md` ("relayout's spans").
 - Going back (`restore`) copies the bytes of an old version, so it keeps the pair that version was saved in.
 - A relayout places the answer again, so the new version has the engine's placement: texts the owner moved
-  or resized by hand (`app_docs/owner-edits.md`) are not carried into the new pair. The owner's version
-  stays in the list.
+  or resized by hand (`app_docs/owner-edits.md`) are not carried into the new pair, and a card of the
+  answer the owner moved, resized or turned is placed by the engine again (with its photo, above). The
+  owner's version stays in the list.
 
 ## The picker
 
@@ -116,6 +138,12 @@ The "stands in for" names are the owner's own words for the look each pair gives
 - Never ship a font file without its family's licence (`assets/fonts/OFL-*.txt`, one per family).
 - Never serve a font file the pairs do not name: the edit-assets route allows exactly `allFontFiles()`.
 - Never call an AI model in a relayout. It places the answer the version already holds.
+- Never drop a library photo in a relayout while its card is still placed: a card of the answer keeps the
+  photo the owner gave it, and a card the owner added is kept as it was.
+- Never copy `inputs.photos` from the version an answer is placed over: write it from the new tracks, so
+  it names exactly the photos the new version shows.
+- Never place a version that came from a going back with no answer because it has no AI record of its
+  own: its answer is the record of the version it copies (`answerRecord`).
 - Never rewrite a stored version to change its pair: a relayout saves a new version after the current one.
 - Never let the profile's pair change a version that exists: only the next decide, first version and
   relayout use it.

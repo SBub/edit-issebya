@@ -438,8 +438,12 @@ Built from `specs/layout-engine.md` (steps 1 to 12, branch `feat/engine-simplify
 says what and on which words; the engine decides every time, position, size and line break. Pure and
 deterministic (no clock, no randomness, no I/O). Modules in `packages/edit/src`:
 
-- `engine.ts`: `placeEdit(current, input, picked, transcript, headTrack, preset, measurer)` returns
-  `{ tracks, record }`. It runs the loop (below) until no pick is left out and no two picks share a word.
+- `engine.ts`: `placeEdit(current, input, picked, transcript, headTrack, preset, measurer, pictures)` returns
+  `{ tracks, record }`. The optional `pictures` are the library photos the owner chose, by VISUAL id
+  (`visual-N`): such a card is placed at its photo's aspect and holds `photo` in place of its stand-in
+  `image` (the stand-ins keep their turn, so the other cards' pictures do not shift). Only a relayout
+  passes them (`app_docs/font-pairs.md`); a new answer has none. `editFromAnswer` takes the same
+  optional `pictures` and writes `inputs.photos` from the placed tracks, never from `current`. It runs the loop (below) until no pick is left out and no two picks share a word.
   `editFromAnswer` (decide) and the worker's `first_version` step call it.
 - `engine-timing.ts`: the spans from the words (`floorSpan`, `ownSpan`, `visibleSpan`), the caption
   groups (`captionGroups`) and the same-text pass (`sameTextPass`).

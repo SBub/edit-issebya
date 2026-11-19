@@ -476,7 +476,10 @@ order by created_at;
   with its bytes and its learning rows as they were.
 - Start over decides from version 1, so its new version has the engine's placement, not the owner's.
 - A font pair change (`relayout`) places the version's AI answer again in the new pair, so its new
-  version has the engine's placement too. The owner's moves are not carried into the new pair.
+  version has the engine's placement too. The owner's moves are not carried into the new pair. The
+  owner's pictures are (`app_docs/font-pairs.md`, "The relayout job"): a card that shows a library
+  photo is placed again showing it, at the photo's aspect, and an added card is kept as it was (its
+  photo, word, time, box and turn).
 - Going back to the owner's version copies its bytes: the moved texts and cards come back.
 - Export renders the owner's version like any version (`app_docs/export.md`).
 
@@ -677,11 +680,16 @@ moved, a resized and a widened component match between preview and export`: the 
   that draws both cards where the draft had them, with the large copies signed from the library;
   the rows: the swap (`swapped`, `replaced` the stand-in's file, the engine's box) and the added
   card (`added`, no engine box), both with the words and the photo's description and tags. Then
-  the library's Delete on a photo that version shows warns `Used in 1 version of your reels...`
+  the library's Delete on a photo those versions show warns `Used in 2 versions of your reels...`
   first, deletes it all the same, and the version's preview then shows `A photo in this version
-was deleted from the library`. With `OWNER_EDIT_SHOTS` it keeps `photos-1-picker-open.png`,
-  `photos-2-swapped-picture.png`, `photos-3-two-pictures-at-once.png` and
-  `photos-4-delete-warning.png`.
+was deleted from the library`. Before the Delete, picking the `bold` font pair queues a relayout
+  that the worker finishes (`done`, never `Could not set the new font`): the new version is set in
+  `bold`, names both photos in `inputs.photos`, shows the engine's card with the swapped photo (no
+  stand-in) at the photo's aspect and the added card where the owner put it, both pictures loaded
+  in the preview; so the Delete's warning counts 2 versions. With `OWNER_EDIT_SHOTS` it keeps
+  `photos-1-picker-open.png`, `photos-2-swapped-picture.png`,
+  `photos-3-two-pictures-at-once.png`, `photos-4-font-pair.png` and
+  `photos-5-delete-warning.png`.
 - The guardrail (`test:tools`, `app_docs/export.md`): after the card past the frame's edge, the
   card's picture swapped for the library photo (its preview showing the signed large copy) matches
   its export at the bound, and a second card added over it (both on track 30 at once, the added one

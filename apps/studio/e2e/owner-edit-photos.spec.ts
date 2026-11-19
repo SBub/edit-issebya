@@ -15,7 +15,8 @@ import { claimableJobIds, runWorkerOnce } from "../test-support/worker.ts";
 // (app_docs/owner-edits.md): a selected VISUAL's picture swapped for a library
 // photo, and a new card added at the paused moment over the engine's card, so
 // two cards show at once. Save makes a version showing both photos and a
-// learning row for each.
+// learning row for each. A font pair change then keeps both photos
+// (app_docs/font-pairs.md).
 
 const CACHE_PREFIX = `e2e-${crypto.randomUUID()}/`;
 // Set to a folder to keep screenshots of the editor (never in CI).
@@ -340,6 +341,83 @@ test("Save makes a version showing both photos, and a learning row for the swap 
   }
 });
 
+test("choosing another font pair keeps both photos in the new version", async () => {
+  const { data: before } = await admin
+    .from("versions")
+    .select("id, number")
+    .eq("reel_id", reel!.reelId)
+    .order("number");
+  const owners = before!.at(-1) as { id: string; number: number };
+  const added = await drawn(ADDED);
+
+  await expect(page.getByTestId("font-pair-classic")).toHaveAttribute("aria-checked", "true");
+  await page.getByTestId("font-pair-bold").click();
+  const relayouts = async () => {
+    const { data } = await admin
+      .from("jobs")
+      .select("status, font_pair")
+      .eq("reel_id", reel!.reelId)
+      .eq("kind", "relayout");
+    return data ?? [];
+  };
+  await expect.poll(relayouts).toEqual([{ status: "queued", font_pair: "bold" }]);
+  const worker = await runWorkerOnce({ R2_KEY_PREFIX: CACHE_PREFIX });
+  expect(worker.code, worker.output).toBe(0);
+  // The job is done, not failed: no "Could not set the new font".
+  expect(await relayouts()).toEqual([{ status: "done", font_pair: "bold" }]);
+
+  const { data: versions } = await admin
+    .from("versions")
+    .select("id, number, parent_id, r2_key, inputs")
+    .eq("reel_id", reel!.reelId)
+    .order("number");
+  const saved = versions!.at(-1) as {
+    id: string;
+    number: number;
+    parent_id: string;
+    r2_key: string;
+    inputs: { photos?: string[] };
+  };
+  expect(saved).toMatchObject({ number: owners.number + 1, parent_id: owners.id });
+  expect(saved.inputs.photos).toEqual([older.id, newer.id].sort());
+  const edit = JSON.parse(new TextDecoder().decode((await storage.get(saved.r2_key))!)) as {
+    font_pair: string;
+    inputs: { photos?: string[] };
+    tracks: { behind: { id: string; image?: string; photo?: { id: string } }[] };
+  };
+  expect(edit.font_pair).toBe("bold");
+  expect(edit.inputs.photos).toEqual([older.id, newer.id].sort());
+  // The engine's card keeps the photo the owner gave it (no stand-in), and
+  // the added card is still there, after it.
+  expect(edit.tracks.behind.map((item) => [item.id, item.photo?.id, item.image])).toEqual([
+    [CARD, older.id, undefined],
+    [ADDED, newer.id, undefined],
+  ]);
+
+  // The preview moves to the new version and draws both cards with their
+  // photos; the added card is where the owner put it.
+  await expect(page.locator(`[data-preview-version="${saved.id}"]`)).toBeVisible({
+    timeout: 30_000,
+  });
+  await ready();
+  await expect(page.getByTestId("font-pair-bold")).toHaveAttribute("aria-checked", "true");
+  expect(await drawn(ADDED)).toEqual(added);
+  // The engine's card at its photo's aspect (the older photo's own).
+  const card = await drawn(CARD);
+  const { data: photo } = await admin
+    .from("photos")
+    .select("width, height")
+    .eq("id", older.id)
+    .single();
+  const size = photo as { width: number; height: number };
+  expect(Math.abs(card.height - (card.width * size.height) / size.width)).toBeLessThanOrEqual(1);
+  await expect.poll(async () => (await picture(CARD)).loaded).toBe(true);
+  await expect.poll(async () => (await picture(ADDED)).loaded).toBe(true);
+  expect((await picture(CARD)).src).not.toContain("photos/");
+  expect((await picture(ADDED)).src).not.toContain("photos/");
+  await shot("photos-4-font-pair.png");
+});
+
 test("deleting a photo a version shows warns first with the number of versions, and the version then shows a notice", async () => {
   const library = page.getByTestId("photo-drop");
   await library.getByRole("button", { name: "kitchen.jpg", exact: true }).click();
@@ -347,16 +425,16 @@ test("deleting a photo a version shows warns first with the number of versions, 
   await expect(dialog).toBeVisible();
   await expect(dialog.getByTestId("photo-delete-usage")).toHaveCount(0);
   await dialog.getByRole("button", { name: "Delete photo" }).click();
-  // One version shows it: the owner's saved version (the version before it
-  // shows the stand-in).
+  // Two versions show it: the owner's saved version and the one laid out
+  // from it in the bold pair (the version before them shows the stand-in).
   await expect(dialog.getByTestId("photo-delete-usage")).toHaveText(
-    "Used in 1 version of your reels. It will show a notice instead of the photo, and cannot be exported",
+    "Used in 2 versions of your reels. They will show a notice instead of the photo, and cannot be exported",
   );
   await expect(dialog.getByTestId("photo-delete-confirm").getByRole("button")).toHaveText([
     "Cancel",
     "Yes, delete",
   ]);
-  await shot("photos-4-delete-warning.png");
+  await shot("photos-5-delete-warning.png");
   // Allowed all the same.
   await dialog.getByRole("button", { name: "Yes, delete" }).click();
   await expect(dialog).toBeHidden();

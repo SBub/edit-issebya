@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { build } from "./build.ts";
+import { editFromAnswer } from "./decide.ts";
 import {
   OWNER_ADD_SECONDS,
   applyOwnerAdds,
+  keepOwnerAdds,
   nextOwnerVisualId,
   ownerAddPlacement,
   ownerAddSpan,
   ownerAddWord,
+  ownerPictures,
   parseOwnerAdds,
 } from "./owner-add.ts";
 import { ownerMoveProblems, settleOwnerMove } from "./owner-edit.ts";
@@ -227,5 +230,116 @@ describe("a card the owner adds", () => {
       engine.y >= card.y + card.height;
     expect(apart).toBe(true);
     expect(Math.abs(card.height / card.width - 900 / 1600)).toBeLessThan(0.01);
+  });
+});
+
+// A font pair change places the answer again (app_docs/font-pairs.md): the
+// owner's pictures do not depend on the font, so they stay.
+describe("what a relayout keeps of the owner's pictures", () => {
+  const answer = {
+    accents: [],
+    questions: [],
+    big_words: [],
+    visuals: [{ from: hook.transcript.words[0]!.id, to: hook.transcript.words[5]!.id }],
+    lists: [],
+    word_fixes: [],
+    hook: null,
+  };
+  const visual = (edit: Edit, id: string) => {
+    const item = (edit.tracks.behind ?? []).find((entry) => entry.id === id);
+    if (item?.kind !== "visual") throw new Error(`no visual ${id}`);
+    return item;
+  };
+  const placeAnswer = async (current: Edit, pictures?: ReturnType<typeof ownerPictures>) => {
+    const measurer = await nodeMeasurer();
+    const made = editFromAnswer(
+      current,
+      answer,
+      preset,
+      hook.transcript,
+      hook.headTrack,
+      measurer,
+      pictures,
+    );
+    if (!made.ok) throw new Error(made.reasons.join("; "));
+    return made.edit;
+  };
+  const picture = { id: PHOTO.id, width: PHOTO.width, height: PHOTO.height };
+
+  it("places a card with the photo the owner gave it, at the photo's aspect, and names it in the inputs", async () => {
+    const standIn = await placeAnswer(hook.edit);
+    expect(visual(standIn, "visual-1").image).toBeDefined();
+    expect(standIn.inputs.photos).toBeUndefined();
+    expect(ownerPictures(standIn).size).toBe(0);
+
+    // The owner's swap, as a stored version holds it.
+    const card = visual(standIn, "visual-1");
+    const swapped: Edit = {
+      ...standIn,
+      inputs: { ...standIn.inputs, photos: [PHOTO.id] },
+      tracks: {
+        ...standIn.tracks,
+        behind: [
+          {
+            id: card.id,
+            kind: "visual",
+            start: card.start,
+            end: card.end,
+            photo: picture,
+            box: card.box,
+          },
+        ],
+      },
+    };
+    expect([...ownerPictures(swapped)]).toEqual([["visual-1", picture]]);
+
+    const again = await placeAnswer(swapped, ownerPictures(swapped));
+    const placed = visual(again, "visual-1");
+    expect(placed.photo).toEqual(picture);
+    expect("image" in placed).toBe(false);
+    expect(Math.abs(placed.box.height - (placed.box.width * 900) / 1600)).toBeLessThanOrEqual(1);
+    expect(again.inputs.photos).toEqual([PHOTO.id]);
+
+    // A new answer placed over that version (no pictures given) shows its
+    // stand-in and names no photo: the old names are never carried.
+    const fresh = await placeAnswer(swapped);
+    expect(visual(fresh, "visual-1").image).toBe(card.image);
+    expect(fresh.inputs.photos).toBeUndefined();
+  });
+
+  it("keeps the cards the owner added, as they were, after the engine's, each with its click", async () => {
+    const standIn = await placeAnswer(hook.edit);
+    const start = word("w10");
+    const added = applyOwnerAdds(
+      standIn,
+      [{ id: "owner-visual-1", photo_id: PHOTO.id, word: start.id, x: 620, y: 420, width: 320 }],
+      await contextOf(),
+    );
+    if (!added.ok) throw new Error(added.reasons.join("; "));
+    const turned: Edit = {
+      ...added.edit,
+      tracks: {
+        ...added.edit.tracks,
+        behind: added.edit.tracks.behind!.map((item) =>
+          item.id === "owner-visual-1" && item.kind === "visual" ? { ...item, rotation: 12 } : item,
+        ),
+      },
+    };
+    // An added card is no picture of the answer's cards.
+    expect(ownerPictures(turned).size).toBe(0);
+
+    const again = await placeAnswer(turned, ownerPictures(turned));
+    expect(again.tracks.behind!.map((item) => item.id)).toEqual(["visual-1"]);
+    const kept = keepOwnerAdds(turned, again, { transcript: hook.transcript, preset });
+    expect(kept.tracks.behind!.map((item) => item.id)).toEqual(["visual-1", "owner-visual-1"]);
+    expect(visual(kept, "owner-visual-1")).toEqual(visual(turned, "owner-visual-1"));
+    expect(kept.inputs.photos).toEqual([PHOTO.id]);
+    const clicks = (edit: Edit) =>
+      edit.tracks.sounds.filter((sound) => sound.id === "click-owner-visual-1").length;
+    expect(clicks(kept)).toBe(clicks(turned));
+    const parsed = parseEdit(structuredClone(kept), preset, hook.transcript);
+    expect(parsed.ok ? [] : parsed.reasons).toEqual([]);
+    // Nothing added: the placed edit itself.
+    expect(keepOwnerAdds(standIn, again, { transcript: hook.transcript, preset })).toBe(again);
   });
 });
