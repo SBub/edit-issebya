@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { e2eStorageRoot, fakeStorage } from "@edit-issebya/storage";
-import { type Page, expect, test } from "@playwright/test";
+import { type Locator, type Page, expect, test } from "@playwright/test";
 import { unchangedAnswerScript } from "../test-support/ai-script.ts";
 import {
   createTestUser,
@@ -163,12 +163,29 @@ async function runWorker(script: string) {
   return runWorkerOnce({ R2_KEY_PREFIX: CACHE_PREFIX, E2E_MOCK_AI_SCRIPT: script });
 }
 
+// The job rows are written by the action; the response wait below covers the usual case, this
+// ceiling covers any other action response that arrives first.
+const POLL = { timeout: 30_000 };
+
+// Clicks a button that calls a server action and waits for the action's own response. The first
+// call on a freshly started dev server compiles the action before it answers, which can take
+// longer than any poll on the database row it writes; once the response is in, the row is there.
+async function clickAndAwaitAction(button: Locator) {
+  const answered = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" && "next-action" in response.request().headers(),
+    { timeout: 60_000 },
+  );
+  await button.click();
+  await answered;
+}
+
 // Start over is the only way to a third version now: it queues a start_over
 // job, and the worker decides again from version 1 with an answer that keeps
 // its bytes, saving version 3.
 async function startOverToVersion3() {
-  await page.getByTestId("start-over").click();
-  await expect.poll(async () => (await jobsOf("start_over")).length).toBe(1);
+  await clickAndAwaitAction(page.getByTestId("start-over"));
+  await expect.poll(async () => (await jobsOf("start_over")).length, POLL).toBe(1);
   const worker = await runWorker(await unchangedAnswerScript(scriptDir));
   expect(worker.code, worker.output).toBe(0);
   await expect(versionItem(3).getByTestId("version-current")).toBeVisible({ timeout: 30_000 });
@@ -177,6 +194,9 @@ async function startOverToVersion3() {
 test("going back makes a new version copying the old one, and going back again", async ({
   baseURL,
 }) => {
+  // Three worker runs plus, on a freshly started dev server, the page's and the actions' first
+  // compile: about 30 s cold, which is the default test timeout.
+  test.setTimeout(120_000);
   await page.goto(await signInLink(admin, owner.email, baseURL!));
   await page.goto(`/studio/reels/${reel!.reelId}`);
   await expect(page.locator('[data-realtime="ready"]')).toBeVisible({ timeout: 30_000 });
@@ -190,9 +210,9 @@ test("going back makes a new version copying the old one, and going back again",
   const [v1, , v3] = before;
   const bytesBefore = await Promise.all(before.map((v) => bytesOf(v.r2_key)));
 
-  await (await goBackButton(1)).click();
+  await clickAndAwaitAction(await goBackButton(1));
   await expect
-    .poll(async () => (await jobsOf("restore")).map((j) => j.restore_version_id))
+    .poll(async () => (await jobsOf("restore")).map((j) => j.restore_version_id), POLL)
     .toEqual([v1!.id]);
   expect((await jobsOf("restore")).map((j) => j.kind)).toEqual(["restore"]);
   const unchanged = await unchangedAnswerScript(scriptDir);
@@ -215,8 +235,8 @@ test("going back makes a new version copying the old one, and going back again",
   await expect(versionItem(4).getByTestId("version-title")).toHaveText("Back to v1");
   await expect((await versionDetails(4)).getByTestId("version-origin")).toHaveText("Back to v1");
 
-  await (await goBackButton(3)).click();
-  await expect.poll(async () => (await jobsOf("restore")).length).toBe(2);
+  await clickAndAwaitAction(await goBackButton(3));
+  await expect.poll(async () => (await jobsOf("restore")).length, POLL).toBe(2);
   const second = await runWorker(unchanged);
   expect(second.code, second.output).toBe(0);
 
