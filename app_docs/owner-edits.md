@@ -244,7 +244,9 @@ your library`). The card then shows the photo (`photo: { id, width, height }`, i
   sets a question's lines by moving its own word elements between lines (a space between two words,
   a line break between two lines), never by writing its html anew, which would leave words the
   timeline never shows. A move or a corner resize writes the question's own element only; its words
-  follow it. So the text is where it was dropped on the very next frame, and the rebuilt page swaps in
+  follow it. An accent's and a caption's
+  words are elements of their own too (`<item>_wK`; `app_docs/edit-model.md`, "The word-by-word
+  entrance"), read and set the same way. So the text is where it was dropped on the very next frame, and the rebuilt page swaps in
   later with nothing moving. A patch never writes what the page's timeline animates (`transform`,
   `opacity`, `visibility`, `display`), so the moment on screen stays the timeline's. A drop that
   changes nothing or is refused drops the patch, and Cancel restyles the page back the same way.
@@ -628,7 +630,7 @@ like decide does (`E2E_MOCK_MASK` in specs).
   size with the same words shown (its own word elements moved onto the lines), kept at the drop and
   after the swap. Save queues its move with a wrap width, the worker saves it, the saved version
   draws it at the owner's place on the owner's lines and still builds it up word by word as it is
-  spoken (`questionShownAt` at the middle of each word), the mark only with the last word; the
+  spoken (`revealShownAt` at the middle of each word), the mark only with the last word; the
   learning row is `QUESTION`, `question/word-by-word`, its text with the mark, moved and resized,
   with its wrap width. With `OWNER_EDIT_SHOTS` it keeps `question-1-selected.png`,
   `question-2-edge-held.png` and `question-3-saved-revealed.png`.

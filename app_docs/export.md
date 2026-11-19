@@ -592,7 +592,7 @@ ffmpeg -f lavfi -i color=c=black:s=108x192:r=30:d=1 -f lavfi -i anullsrc=r=48000
   for the real studio?" (w0005 to w0010) placed by the layout engine. It is compared twice
   mid-reveal, in the two longest waits between two of its words (one word on screen, then five), and
   once at its end (the whole question with its mark, halfway from its last word to its out-fade); the
-  moments come from the version's own word times (`questionReveal`). Before each capture the spec
+  moments come from the version's own word times (`wordReveal`). Before each capture the spec
   reads the words on screen in the preview and expects exactly the words spoken so far. Its probe:
   the export's whole question against the preview with one word must score below the bound, so the
   comparison is proven to see which words are on screen. Measured 2026-11-16 (the composite): 0.995875

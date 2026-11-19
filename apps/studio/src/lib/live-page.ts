@@ -12,8 +12,9 @@ import { type Drag, resizeShare, scaledVisual } from "./owner-edit";
 // One element of a built page as the builder wrote it: its inline style, its
 // lines (the inside of a text element, null for anything holding more than
 // lines), its lines of words (a text whose every word is an element of its
-// own, a QUESTION's: each line the ids of its words, null otherwise) and the
-// ids of the elements inside it (a LIST's levels, a QUESTION's words).
+// own, a caption's, an accent's or a QUESTION's: each line the ids of its
+// words, null otherwise) and the ids of the elements inside it (a LIST's
+// levels, a revealed text's words).
 export interface PageElement {
   style: Record<string, string>;
   html: string | null;
@@ -84,7 +85,7 @@ function readPage(html: string): Map<string, PageElement> {
   return out;
 }
 
-// The class of a QUESTION's word element (the builder's `.q`, `build.ts`).
+// The class of a revealed text's word element (the builder's `.q`, `build.ts`).
 const WORD_CLASS = "q";
 
 function isWord(el: Element): boolean {
@@ -96,10 +97,10 @@ function isWord(el: Element): boolean {
   );
 }
 
-// A text whose every word is an element of its own (a QUESTION, which shows
-// its words one by one: line breaks and word elements only): each line the
-// ids of its words, in order. Null for any other element (a LIST's layer
-// holds its levels, never words).
+// A text whose every word is an element of its own (a caption, an accent or
+// a QUESTION, which show their words one by one: line breaks and word
+// elements only): each line the ids of its words, in order. Null for any
+// other element (a LIST's layer holds its levels, never words).
 function wordLines(el: Element): string[][] | null {
   const kids = [...el.children];
   const words = kids.filter((kid) => kid.tagName !== "BR");
@@ -237,7 +238,7 @@ export function changedElements(from: PageElements, to: PageElements): string[] 
 // removed, the lines replaced. What the timeline animates is never touched.
 // Lines of word elements are set by moving the page's own word elements
 // between lines, never by writing new ones: the timeline drives each word
-// (a QUESTION's reveal), so a word written anew would never show.
+// (the word-by-word reveal), so a word written anew would never show.
 export function restyle(el: HTMLElement, wanted: ElementPatch, known: readonly string[]): void {
   for (const name of new Set([...known, ...Object.keys(wanted.style)])) {
     if (isAnimated(name)) continue;

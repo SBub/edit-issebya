@@ -6,7 +6,8 @@ import type { HeadTrack } from "./head-track.ts";
 import { attrs, escapeHtml, px, sec, selector, volume } from "./html.ts";
 import type { Measurer } from "./measure.ts";
 import { textLines } from "./lines.ts";
-import { isQuestion, questionReveal, questionText } from "./question.ts";
+import { isQuestion, questionText } from "./question.ts";
+import { wordReveal } from "./reveal.ts";
 import { type Preset, wordsText } from "./preset.ts";
 import { FONT_ROLES, type FontPair, fontPairFiles } from "./font-pairs.ts";
 import { STYLES, VARIANTS } from "./variants.ts";
@@ -59,14 +60,14 @@ const BEHIND_STYLE = [
   "      .mask-front { mix-blend-mode: multiply; }",
 ];
 
-// A QUESTION's words, each hidden until its own moment; only on a page with
-// one. Its lines are left-aligned (the span's default), a block of text.
-const QUESTION_STYLE = "      .q { opacity: 0; }";
+// The words of a text that builds up word by word (a caption, an accent, a
+// QUESTION), each hidden until its own moment; only on a page with one.
+const REVEAL_STYLE = "      .q { opacity: 0; }";
 
-// How long a question's word takes to appear: a hard cut, like typing. Not
+// How long a revealed word takes to appear: a hard cut, like typing. Not
 // zero: HyperFrames reuses a still frame only between a timeline's keyframes,
 // and a tween is one.
-const QUESTION_WORD_SECONDS = 0.001;
+const REVEAL_WORD_SECONDS = 0.001;
 
 // A big word's class, on any page with one.
 const WORD_STYLE = "      .word { position: absolute; line-height: 1; white-space: nowrap; }";
@@ -217,7 +218,7 @@ export function build(
       : []),
     // The written hook's own class (its lines centred); only on a page with one.
     ...(boxes.some((box) => box.kind === "hook") ? ["      .hook { text-align: center; }"] : []),
-    ...(boxes.some((box) => box.question) ? [QUESTION_STYLE] : []),
+    ...(boxes.some((box) => box.words) ? [REVEAL_STYLE] : []),
   ];
 
   const body: string[] = [];
@@ -423,16 +424,20 @@ export function build(
       `top: ${px(box.y)}px`,
       `font-size: ${px(box.size)}px`,
       `color: ${box.color}`,
-      ...(box.lines.length > 1 && box.kind !== "hook" && !box.question
+      // A hook's lines are centred by its class; a QUESTION's are left-aligned.
+      ...(box.lines.length > 1 &&
+      box.kind !== "hook" &&
+      !isQuestion({ id: box.itemId, kind: box.kind })
         ? ["text-align: center"]
         : []),
       ...(box.style ? [inlineStyle(box.style)] : []),
     ].join("; ");
-    if (box.question) {
-      // A QUESTION: every word is in its final place from the start (the lines
-      // never reflow) and hidden; each cuts in at its own spoken moment, the
-      // question mark with the last one. The whole text then stays until the
-      // question's end and leaves with the accent's fade.
+    if (box.words) {
+      // A caption, an accent or a QUESTION: every word is in its final place
+      // from the start (the lines never reflow) and hidden; each cuts in at
+      // its own spoken moment (a question's mark with its last word). The
+      // whole text then stays until its end and leaves with the caption's
+      // fade.
       const wordId = (index: number) => `${box.itemId}_w${index + 1}`;
       let index = 0;
       const lines = box.lines.map((line) =>
@@ -457,11 +462,11 @@ export function build(
       );
       const id = selector(box.itemId);
       js.push(
-        `tl.fromTo(${id}, { opacity: 0 }, { opacity: 1, duration: ${num(QUESTION_WORD_SECONDS)} }, ${num(box.start)});`,
+        `tl.fromTo(${id}, { opacity: 0 }, { opacity: 1, duration: ${num(REVEAL_WORD_SECONDS)} }, ${num(box.start)});`,
       );
-      for (const [at, word] of box.question.entries()) {
+      for (const [at, word] of box.words.entries()) {
         js.push(
-          `tl.fromTo(${selector(wordId(at))}, { opacity: 0 }, { opacity: 1, duration: ${num(QUESTION_WORD_SECONDS)} }, ${num(word.at)});`,
+          `tl.fromTo(${selector(wordId(at))}, { opacity: 0 }, { opacity: 1, duration: ${num(REVEAL_WORD_SECONDS)} }, ${num(word.at)});`,
         );
       }
       js.push(
@@ -476,6 +481,7 @@ export function build(
         ["style", css],
       ])}>${box.lines.map(escapeHtml).join("<br />")}</span>`,
     );
+    // The written hook, the one text nobody says: whole, with the rise.
     const id = selector(box.itemId);
     js.push(
       `tl.fromTo(${id}, { opacity: 0, y: ${caption.rise} }, { opacity: 1, y: 0, duration: ${num(caption.inSeconds)}, ease: "${caption.inEase}" }, ${num(box.start)});`,
@@ -659,9 +665,12 @@ function placedText(
       kind,
       text,
       lines,
-      ...(question
-        ? {
-            question: questionReveal(
+      // Every spoken text builds up word by word (its only
+      // entrance); the hook, which nobody says, comes in whole.
+      ...(kind === "hook"
+        ? {}
+        : {
+            words: wordReveal(
               text,
               (item.words ?? []).flatMap((id) => {
                 const word = byId.get(id);
@@ -669,8 +678,7 @@ function placedText(
               }),
               span,
             ),
-          }
-        : {}),
+          }),
       font,
       size,
       color: item.color ?? (kind === "caption" ? STYLES.caption.color : STYLES.accent.color),

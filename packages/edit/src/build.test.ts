@@ -225,7 +225,12 @@ describe("build", () => {
       ISSEBYA_PRESET,
       await nodeMeasurer(),
     );
-    expect(html).toContain("one<br />two<br />three four");
+    // Each word its own element (the word-by-word entrance), the lines centred.
+    const word = (index: number, text: string) =>
+      `<span id="${accent.id}_w${index}" class="q">${text}</span>`;
+    expect(html).toContain(
+      `; text-align: center">${word(1, "one")}<br />${word(2, "two")}<br />${word(3, "three")} ${word(4, "four")}</span>`,
+    );
   });
 
   it("escapes text and style values", async () => {
@@ -239,7 +244,11 @@ describe("build", () => {
       ISSEBYA_PRESET,
       await nodeMeasurer(),
     );
-    expect(html).toContain("&lt;b&gt;&quot;Tom&quot; &amp; &#39;Jerry&#39;&lt;/b&gt;</span>");
+    // Each word is escaped inside its own element.
+    const id = edit.tracks.captions[0]!.id;
+    expect(html).toContain(
+      `<span id="${id}_w1" class="q">&lt;b&gt;&quot;Tom&quot;</span> <span id="${id}_w2" class="q">&amp;</span> <span id="${id}_w3" class="q">&#39;Jerry&#39;&lt;/b&gt;</span></span>`,
+    );
     expect(html).toContain("font-family: &quot;Inter Tight SemiBold&quot;");
     expect(html).not.toContain("<b>");
   });

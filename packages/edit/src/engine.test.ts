@@ -6,6 +6,7 @@ import { editFromAnswer } from "./decide.ts";
 import { placeEdit } from "./engine.ts";
 import { type EngineInput, choicesOf } from "./engine-input.ts";
 import { SAFE_ZONE } from "./engine-zones.ts";
+import { escapeHtml } from "./html.ts";
 import { textLines } from "./lines.ts";
 import {
   LAYOUT_PADDING,
@@ -3014,12 +3015,20 @@ describe("the question's look: word by word, a question mark at the end", () => 
     );
   });
 
-  it("leaves an accent and a page with no question as they were", async () => {
+  it("adds no mark to an accent, and keeps an accent's lines centred", async () => {
     const { html } = await place({ accents: [{ from: "w13", to: "w17" }] });
-    expect(html).not.toContain(".q {");
-    expect(html).not.toContain('class="q"');
     expect(line(html, '<span id="accent-1"')).not.toContain("?");
-    expect(html).toContain('tl.fromTo("#accent-1", { opacity: 0, y: 12 }');
+    const wrapped = await place({ accents: [{ from: "w13", to: "w17" }] });
+    const overlay = wrapped.edit.tracks.overlays.find((item) => item.id === "accent-1")!;
+    overlay.breaks = [2];
+    const built = build(
+      withPlaceholderMasks(wrapped.edit, transcript),
+      transcript,
+      hand.headTrack,
+      ISSEBYA_PRESET,
+      await nodeMeasurer(),
+    );
+    expect(line(built.html, '<span id="accent-1"')).toContain("text-align: center");
   });
 
   it("shows a stored question with the new look: the mark added, its stored place and lines kept", async () => {
@@ -3055,5 +3064,231 @@ describe("the question's look: word by word, a question mark at the end", () => 
     const tweens = (page: string) => page.split("\n").filter((row) => row.includes('"#question-1'));
     expect(tweens(front)).toEqual(tweens(html));
     expect(tweens(front)).toHaveLength(IDS.length + 2);
+  });
+});
+
+// The word-by-word entrance: every accent and every caption builds up
+// word by word, each word cutting in as it is spoken, exactly like a question.
+describe("accents and captions come in word by word, as they are spoken", () => {
+  // "how we spend our time", five words over 3.926 to 5.206 s.
+  const ACCENT = { accents: [{ from: "w13", to: "w17" }] };
+  const IDS = ["w13", "w14", "w15", "w16", "w17"];
+  const { caption: CAPTION } = ISSEBYA_PRESET;
+  const at = (t: number) => String(Math.round(t * 1000) / 1000);
+  const line = (html: string, part: string) => html.split("\n").find((row) => row.includes(part))!;
+  const wordsOf = (html: string, id: string) =>
+    [
+      ...line(html, `<span id="${id}"`).matchAll(
+        /<span id="([^"]+)_w\d+" class="q">([^<]*)<\/span>/g,
+      ),
+    ]
+      .filter((match) => match[1] === id)
+      .map((match) => match[2]);
+  const cutIn = (id: string, t: number) =>
+    `tl.fromTo("#${id}", { opacity: 0 }, { opacity: 1, duration: 0.001 }, ${at(t)});`;
+  const tweens = (html: string, id: string) =>
+    html.split("\n").filter((row) => row.includes(`"#${id}"`) || row.includes(`"#${id}_w`));
+  const rebuilt = async (edit: Edit) =>
+    build(
+      withPlaceholderMasks(edit, transcript),
+      transcript,
+      hand.headTrack,
+      ISSEBYA_PRESET,
+      await nodeMeasurer(),
+    );
+
+  it("draws each word of an accent as its own hidden element, in its place from the start", async () => {
+    const { edit, html, checks } = await place(ACCENT);
+    const overlay = edit.tracks.overlays.find((item) => item.id === "accent-1")!;
+    expect(wordsOf(html, "accent-1")).toEqual(["how", "we", "spend", "our", "time"]);
+    expect(html).toContain("      .q { opacity: 0; }");
+    const element = line(html, '<span id="accent-1"');
+    expect(element).toContain('class="text f-artistic"');
+    expect(element).toContain(`font-size: ${overlay.size}px; color: #FFFFFF`);
+    expect(element.split("<br />")).toHaveLength((overlay.breaks ?? []).length + 1);
+    expect(checks).toEqual([]);
+  });
+
+  it("cuts each word of an accent in at the moment it is spoken, and keeps the accent's fade out", async () => {
+    const { html, spans } = await place(ACCENT);
+    const span = spans.get("accent-1")!;
+    expect(tweens(html, "accent-1")).toEqual([
+      `      ${cutIn("accent-1", span.start)}`,
+      ...IDS.map((id, index) => `      ${cutIn(`accent-1_w${index + 1}`, byId.get(id)!.start)}`),
+      `      tl.to("#accent-1", { opacity: 0, duration: ${CAPTION.outSeconds} }, ${at(span.end - CAPTION.outSeconds)});`,
+    ]);
+  });
+
+  it("gives no accent and no caption the rise or the fade in", async () => {
+    const { edit, html } = await place(ACCENT);
+    const ids = [...edit.tracks.captions, ...edit.tracks.overlays].map((item) => item.id);
+    expect(ids.length).toBeGreaterThan(100);
+    expect(html).not.toMatch(/tl\.fromTo\("#(cw|accent-)[^"]*", \{ opacity: 0, y:/);
+    expect(html).not.toContain(`duration: ${CAPTION.inSeconds}, ease: "${CAPTION.inEase}"`);
+  });
+
+  it("cuts each caption in on its own word, and keeps its fade out", async () => {
+    const { edit, html, spans } = await place({});
+    const shown = edit.tracks.captions.filter((caption) => !caption.hidden_by);
+    expect(shown.length).toBeGreaterThan(100);
+    for (const caption of shown) {
+      const span = spans.get(caption.id)!;
+      const text = caption.text ?? wordsText(caption.words, transcript, ISSEBYA_PRESET);
+      expect(wordsOf(html, caption.id), caption.id).toEqual(text.split(" ").map(escapeHtml));
+      const rows = tweens(html, caption.id);
+      expect(rows[0], caption.id).toBe(`      ${cutIn(caption.id, span.start)}`);
+      // Its first word comes in as the caption does: on that word's start.
+      expect(rows[1], caption.id).toBe(
+        `      ${cutIn(`${caption.id}_w1`, byId.get(caption.words[0]!)!.start)}`,
+      );
+      expect(rows.at(-1), caption.id).toBe(
+        `      tl.to("#${caption.id}", { opacity: 0, duration: ${CAPTION.outSeconds} }, ${at(Math.max(span.end - CAPTION.outSeconds, span.start + CAPTION.minSeconds))});`,
+      );
+      expect(rows, caption.id).toHaveLength(text.split(" ").length + 2);
+    }
+  });
+
+  it("shows a caption's fixed word of several words together, on its spoken word", async () => {
+    // Three words written for the one spoken word w13.
+    const { edit, html } = await place({ word_fixes: [{ word: "w13", text: "how on earth" }] });
+    const caption = edit.tracks.captions.find((item) => item.words.includes("w13"))!;
+    expect(caption.text).toBe("how on earth");
+    expect(wordsOf(html, caption.id)).toEqual(["how", "on", "earth"]);
+    const moment = byId.get("w13")!.start;
+    expect(tweens(html, caption.id).slice(0, 4)).toEqual([
+      `      ${cutIn(caption.id, moment)}`,
+      `      ${cutIn(`${caption.id}_w1`, moment)}`,
+      `      ${cutIn(`${caption.id}_w2`, moment)}`,
+      `      ${cutIn(`${caption.id}_w3`, moment)}`,
+    ]);
+  });
+
+  it("spreads a caption of fewer shown words than spoken ones over them in order", async () => {
+    // A stored caption over two spoken words, written as one joined word, and
+    // one over three spoken words written as two.
+    const { edit } = await place({});
+    const stored = structuredClone(edit);
+    const joined = stored.tracks.captions.find((item) => item.id === "cw13")!;
+    joined.words = ["w13", "w14"];
+    joined.text = "how-we";
+    const two = stored.tracks.captions.find((item) => item.id === "cw15")!;
+    two.words = ["w15", "w16", "w17"];
+    two.text = "spend time";
+    const { html } = await rebuilt(stored);
+    expect(wordsOf(html, "cw13")).toEqual(["how-we"]);
+    expect(tweens(html, "cw13")[1]).toBe(`      ${cutIn("cw13_w1", byId.get("w13")!.start)}`);
+    // Two shown words over three spoken ones: the first and the second.
+    expect(tweens(html, "cw15").slice(1, 3)).toEqual([
+      `      ${cutIn("cw15_w1", byId.get("w15")!.start)}`,
+      `      ${cutIn("cw15_w2", byId.get("w16")!.start)}`,
+    ]);
+  });
+
+  it("spreads an accent whose own text has another word count over its spoken words", async () => {
+    const { edit } = await place({ accents: [{ from: "w13", to: "w14" }] });
+    const stored = structuredClone(edit);
+    const overlay = stored.tracks.overlays.find((item) => item.id === "accent-1")!;
+    // Four shown words over two spoken ones: two on each.
+    overlay.text = "how do we really";
+    delete overlay.breaks;
+    const { html } = await rebuilt(stored);
+    expect(wordsOf(html, "accent-1")).toEqual(["how", "do", "we", "really"]);
+    const [first, second] = [byId.get("w13")!.start, byId.get("w14")!.start];
+    expect(tweens(html, "accent-1").slice(1, 5)).toEqual([
+      `      ${cutIn("accent-1_w1", first)}`,
+      `      ${cutIn("accent-1_w2", first)}`,
+      `      ${cutIn("accent-1_w3", second)}`,
+      `      ${cutIn("accent-1_w4", second)}`,
+    ]);
+    // One shown word over two spoken ones: on the first.
+    overlay.text = "how";
+    const one = await rebuilt(stored);
+    expect(tweens(one.html, "accent-1")[1]).toBe(`      ${cutIn("accent-1_w1", first)}`);
+  });
+
+  it("shows the words said before an accent's own start as the accent starts", async () => {
+    const { edit } = await place(ACCENT);
+    const stored = structuredClone(edit);
+    const overlay = stored.tracks.overlays.find((item) => item.id === "accent-1")!;
+    // It starts on its third word: the first two were said before it.
+    overlay.start = { word: "w15" };
+    const { html } = await rebuilt(stored);
+    const from = byId.get("w15")!.start;
+    expect(tweens(html, "accent-1").slice(0, 6)).toEqual([
+      `      ${cutIn("accent-1", from)}`,
+      `      ${cutIn("accent-1_w1", from)}`,
+      `      ${cutIn("accent-1_w2", from)}`,
+      `      ${cutIn("accent-1_w3", from)}`,
+      `      ${cutIn("accent-1_w4", byId.get("w16")!.start)}`,
+      `      ${cutIn("accent-1_w5", byId.get("w17")!.start)}`,
+    ]);
+  });
+
+  it("keeps a caption hidden under an accent or a big word off the page: no element, no tween", async () => {
+    const { edit, html } = await place({
+      ...ACCENT,
+      big_words: [{ from: "w113", to: "w113" }],
+    });
+    const hidden = edit.tracks.captions.filter((caption) => caption.hidden_by);
+    expect(new Set(hidden.map((caption) => caption.hidden_by))).toEqual(
+      new Set(["accent-1", "big-word-1"]),
+    );
+    expect(hidden.flatMap((caption) => caption.words)).toEqual(expect.arrayContaining(IDS));
+    for (const caption of hidden) {
+      expect(html, caption.id).not.toContain(`<span id="${caption.id}"`);
+      expect(tweens(html, caption.id), caption.id).toEqual([]);
+    }
+  });
+
+  it("leaves the hook, a list's levels and a big word as they were", async () => {
+    const { html } = await place({
+      hook: { text: "Gen Z won't work like you did" },
+      lists: [{ items: [{ from: "w100", to: "w103", key_from: "w102" }] }],
+      big_words: [{ from: "w113", to: "w113" }],
+    });
+    // The hook: whole, with the rise.
+    expect(line(html, '<span id="hook"')).not.toContain('class="q"');
+    expect(html).toContain(
+      `tl.fromTo("#hook", { opacity: 0, y: ${CAPTION.rise} }, { opacity: 1, y: 0, duration: ${CAPTION.inSeconds}, ease: "${CAPTION.inEase}" }`,
+    );
+    // The list's levels: whole, each with the rise.
+    const levels = html.split("\n").filter((row) => row.includes('class="level '));
+    expect(levels.length).toBeGreaterThan(0);
+    for (const level of levels) expect(level).not.toContain('class="q"');
+    expect(html).toMatch(/tl\.fromTo\("#transition-1-key", \{ opacity: 0, y: 12 \}/);
+    // The big word: one element, a hard cut, no tween.
+    expect(line(html, '<div id="big-word-1"')).not.toContain('class="q"');
+    expect(tweens(html, "big-word-1")).toEqual([]);
+  });
+
+  it("draws the reveal on the export's front page exactly as on the full page", async () => {
+    const measurer = await nodeMeasurer();
+    const { edit, html } = await place(ACCENT);
+    const front = build(edit, transcript, hand.headTrack, ISSEBYA_PRESET, measurer, {
+      layer: "front",
+    }).html;
+    const shown = edit.tracks.captions.find((caption) => !caption.hidden_by)!;
+    for (const id of ["accent-1", shown.id]) {
+      expect(line(front, `<span id="${id}"`)).toBe(line(html, `<span id="${id}"`));
+      expect(tweens(front, id)).toEqual(tweens(html, id));
+    }
+    expect(front).toContain("      .q { opacity: 0; }");
+  });
+
+  it("shows a version stored before the entrance with it, the stored version unchanged", async () => {
+    // The engine fixture is a stored version: built as it is, with no new one.
+    const engine = FIXTURES.find((fixture) => fixture.name === "rethink-work-engine")!;
+    const before = structuredClone(engine.edit);
+    const { html } = build(
+      engine.edit,
+      engine.transcript,
+      engine.headTrack,
+      ISSEBYA_PRESET,
+      await nodeMeasurer(),
+    );
+    expect(engine.edit).toEqual(before);
+    const accent = engine.edit.tracks.overlays.find((item) => item.kind === "accent")!;
+    expect(wordsOf(html, accent.id).length).toBeGreaterThan(0);
+    expect(html).not.toMatch(/tl\.fromTo\("#(cw|accent-)[^"]*", \{ opacity: 0, y:/);
   });
 });

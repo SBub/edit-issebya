@@ -135,7 +135,9 @@ and rule 6 (`engine-place.ts`).
   white (`#FFFFFF`). Sizes are not here: the style table (`STYLES` in `src/variants.ts`) holds the
   bases, `accent` 110 px and `caption` 50 px, and the big word's `largest-fit`. An item with no size
   in an edit takes its font's style base.
-- Captions: `#FFFFFF`, rise 12 px over 0.18 s (`power2.out`), fade out 0.15 s after the group's last word
+- Captions: `#FFFFFF`, each word cut in as it is spoken ("The
+  word-by-word entrance"; the preset's rise of 12 px over 0.18 s, `power2.out`, is now the hook's and the
+  list levels' only), fade out 0.15 s after the group's last word
   (the span ends one fade past it, never past the next group's start; spec decision 25), at least 0.25 s on
   screen, a group breaks at a 0.35 s pause or after 4 units, line gap 14. The caption line (y 1290) is
   the zone table's.
@@ -232,8 +234,9 @@ and rule 6 (`engine-place.ts`).
   goldens compare). The same wasm on the same font bytes gives identical widths everywhere.
 - The builder places each caption, accent, hook and big word at the `position` the layout engine set
   on it (`placedText`, `src/build.ts`), with its `size` and, when it has `breaks`, its lines
-  (rendered joined by `<br />`, centred; a question's lines are left-aligned and its words are
-  elements of their own, "The question's look"). A shown caption or overlay with no position throws
+  (rendered joined by `<br />`, centred; a question's lines are left-aligned, "The question's look").
+  The words of every caption, accent and question are elements of their own ("The word-by-word
+  entrance"). A shown caption or overlay with no position throws
   `build: <kind> <id> has no position; place the edit first`, and a big word with no `position` or
   `size` throws the same way. `src/html.ts` escapes text and attributes and formats numbers.
 - `src/lines.ts`: `textLines(text, breaks)` (a text cut after each of its `breaks`, the builder and the transition levels share it) and `breaksOf(lines)` (the breaks the engine writes for its lines).
@@ -252,8 +255,8 @@ and rule 6 (`engine-place.ts`).
   captions with `hidden_by`, and a stored list caption with none whose start falls inside its list's layer),
   so the page and the checks never see it. The engine splits a caption in time so that `hidden_by` covers
   only a stretch the text is on screen for (see Placement, "never the same word twice").
-- The hook renders like an accent (the artistic font, white, the same rise in and fade out, no
-  shadow) with its own class: `<span class="text hook f-artistic">`, its lines centred by the
+- The hook renders in the accent's style (the artistic font, white, no shadow), whole, with the rise
+  in (12 px over 0.18 s) and the caption's fade out, and with its own class: `<span class="text hook f-artistic">`, its lines centred by the
   `.hook { text-align: center; }` rule, written only on a page with a hook (so every stored page
   builds byte for byte as before). `TextBox.kind` is `hook` for it.
 - Behind the speaker, one composite per mask span, above the footage and under transitions and
@@ -377,21 +380,22 @@ looks different on screen so the owner can tell the two apart (owner decision 20
   only the reveal, the mark and the left alignment are the question's.
 - The whole question stays until its end, which is the accent's: its last word's end, with no hold
   after it. It leaves with the accent's fade (`caption.outSeconds`, 0.15 s, ending on its end).
-- `src/question.ts` holds the shared pure helpers: `QUESTION_PREFIX` and `isQuestion` (an accent
-  overlay with a `question-` id), `questionText`, `questionReveal(text, spoken, span)` (each shown word
-  with its moment: its spoken word's start, never before the question's start nor after its end, never
+- `src/question.ts` holds the question's own pure helpers: `QUESTION_PREFIX` and `isQuestion` (an accent
+  overlay with a `question-` id) and `questionText`. The reveal is shared with accents and captions
+  (`src/reveal.ts`, "The word-by-word entrance"): `wordReveal(text, spoken, span)` (each shown word
+  with its moment: its spoken word's start, never before the text's start nor after its end, never
   before the word shown before it; a text with another word count than its spoken words, a word fix
-  that joins words, is spread over them in order) and `questionShownAt(reveal, time)` (the question as far as it is
+  that joins words, is spread over them in order) and `revealShownAt(reveal, time)` (the text as far as it is
   built at a time).
 - The engine (`placeAccent`, `engine-elements.ts`) measures, wraps and places the question's text with
   its mark, so the box it keeps clear holds the mark. The stored overlay is unchanged in shape:
   `kind: "accent"`, id `question-N`, `words`, `position` (left-aligned), `size`, `breaks`; no `text`.
 - The builder (`placedText`, `build.ts`) gives every question overlay its mark and its reveal
-  (`TextBox.question`), whatever version stored it, and draws it as
+  (`TextBox.words`), whatever version stored it, and draws it as
   `<span id="question-N" class="text f-artistic">` holding one `<span id="question-N_wK" class="q">`
   per shown word (an underscore, which no item id may hold), the words of a line joined by spaces and
   the lines by `<br />`, with no `text-align`. Every word is in its final place from the start, hidden
-  (`.q { opacity: 0; }`, written only on a page with a question), so the lines never reflow. The
+  (`.q { opacity: 0; }`), so the lines never reflow. The
   timeline holds one tween for the text (opacity 0 to 1 at its start), one per word (opacity 0 to 1 at
   its moment) and the accent's out-fade. Each in-tween lasts 1 ms, not zero: HyperFrames reuses a still
   frame only between a timeline's keyframes, so a cut written as a tween is drawn on its frame in the
@@ -402,6 +406,46 @@ looks different on screen so the owner can tell the two apart (owner decision 20
   that line was the widest and sat at the safe zone's edge or beside another text, the checks of that
   build report it (`safe-box`, `text-overlap`); nothing is rewritten. A new version (a relayout, a
   start over) is placed with the mark.
+
+### The word-by-word entrance
+
+Every ACCENT and every CAPTION comes in the way a question does, word by word, each word
+cutting in at the moment it is spoken (owner request 2026-11-19). It is their only entrance: the
+rise and the fade in are gone for them.
+
+- Each word appears at its spoken word's start in the transcript, the same times the captions are
+  anchored on. A word cuts in (no fade, no rise). The whole text then stays until its end and leaves
+  with the fade it always had (`caption.outSeconds`, 0.15 s). Nothing about its time on screen, its
+  place, its size or its lines changes: only how it comes in.
+- Every word is in its final place from the start, hidden, so a line never reflows while the text
+  builds. An accent's lines stay centred and get no mark; only a question is left-aligned and ends with
+  its mark.
+- A caption is one unit, nearly always one word, so a caption group already built up caption by
+  caption: each caption now cuts in on its word. A caption of several words (a number with its unit, a
+  month with its day) builds up word by word inside itself.
+- `src/reveal.ts`, `wordReveal`, gives the moments, for a question, an accent and a caption alike:
+  - a text with as many shown words as spoken ones: each on its own word;
+  - a text with another word count (a caption whose word fix is written as several words or joins
+    words, an accent with its own `text`): spread over the spoken words in order (two words written
+    for one spoken word come in together on it; one word written for two comes in on the first);
+  - a word said before the text's own start (a text that starts late) shows as the text starts; the
+    first word always does; no word shows after the text's end, nor before the word shown before it;
+  - a text with no spoken word (an accent with only its own `text`) is whole from its start.
+- A caption hidden under an accent, a big word or a list (`hidden_by`, `hiddenCaptionIds`) stays off
+  the page: no element and no tween, as before.
+- The builder (`placedText`, `build.ts`) gives every caption and every accent overlay its reveal
+  (`TextBox.words`) and draws it as a question is drawn: `<span id="<item>" class="text f-...">`
+  holding one `<span id="<item>_wK" class="q">` per shown word, the words of a line joined by spaces
+  and the lines by `<br />`. The `.q { opacity: 0; }` rule is on every page with such a text. The
+  timeline holds one tween for the text (opacity 0 to 1 at its start), one per word (opacity 0 to 1 at
+  its moment), each lasting 1 ms (HyperFrames reuses a still frame only between a timeline's
+  keyframes), and the out-fade. The export's front page draws the same elements and tweens.
+- Unchanged: the hook (nobody says it: whole, with the rise), a list's levels (whole, each on its
+  word with the rise), a big word and a visual (hard cuts).
+- A version saved before this entrance renders with it too, with no new version: the builder reads
+  the same stored captions and overlays. A stored version is never rewritten.
+- The studio's move and resize editor reads a caption's and an accent's lines as lines of word
+  elements, as it reads a question's (`apps/studio/src/lib/live-page.ts`).
 
 ### The layout engine's input
 
@@ -838,8 +882,19 @@ never fatal.
   - "the question's look: word by word, a question mark at the end": each word its own hidden element,
     the mark on the last, left-aligned at the stored place and size; measured and placed with its mark
     inside the safe zone; each word cut in at its spoken moment and the text out with the accent's fade;
-    an accent and a page with no question unchanged; a stored question shown with the look at its stored
+    an accent with no mark and its lines centred; a stored question shown with the look at its stored
     place; the front page's question equal to the full page's.
+  - "accents and captions come in word by word, as they are spoken": an
+    accent's words each a hidden element; each cut in at its spoken moment, the fade out kept; no accent
+    and no caption with the rise or the fade in; every shown caption cut in on its own word; a caption's
+    word fix of several words shown together on its spoken word; a caption of fewer shown words than
+    spoken ones spread in order; an accent whose own text has another word count spread in order; the
+    words said before an accent's start shown as it starts; a caption hidden under an accent or a big
+    word with no element and no tween; the hook, a list's levels and a big word unchanged; the front
+    page equal to the full page; a stored version shown with the entrance and left unchanged.
+- `src/reveal.test.ts`: the reveal of an accent and of a caption (each word on its spoken word, shorter
+  and longer texts spread in order, a late start, a text with no spoken word, a caption of one word, a
+  unit of two, a fix that joins two words, a fix of two words for one).
 - `src/question.test.ts`: the mark added once and never doubled, appearing with the last word; each word
   from the moment it is spoken and the words shown at a given time; the first word at the question's
   start; no word after the question's end or before the one before it; a text with another word count;
@@ -879,6 +934,9 @@ never fatal.
   export guardrail's question case (`apps/studio/e2e-tools/export-matches-preview.spec.ts`,
   `app_docs/export.md`). Both place the question with `withQuestion` and read its moments with
   `questionOf` (`apps/studio/test-support/transitions.ts`).
+- E2E, the word-by-word entrance: `apps/studio/e2e/preview.spec.ts`, "an
+  accent and a caption build up word by word as they are spoken", places an accent and a caption word
+  fix with `withAccent` and reads their moments with `revealOf` (the same file), `app_docs/preview.md`.
 - E2E: `apps/studio/e2e/upload.spec.ts` ends with `first_version: version 1 saved, ...`, the
   version row and its R2 key checked.
 
@@ -1004,6 +1062,12 @@ never fatal.
   front page draws it on its frame.
 - The engine and the builder take a question's text from the same `questionText`: never add the mark
   in one and not the other, or the placed box and the drawn text differ.
+- The word-by-word reveal is the only entrance of an accent and of a
+  caption, and the three rules above about a question's words hold for theirs too: never a word before
+  it is spoken (a word said before the text starts shows as the text starts), never a reflow while the
+  text builds, never a zero-length cut. Never give the hook, a list's level, a big word or a visual the
+  reveal, and never show a caption that `hidden_by` hides. Take every moment from `wordReveal`
+  (`src/reveal.ts`): never a second copy of that rule.
 - A version with a `behind` item is saved only once every mask it names exists; the builder never
   builds a behind item without its mask.
 - A big word is checked against the safe box `S` like every text (`safe-box`); there is no `frame`

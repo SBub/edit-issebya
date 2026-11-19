@@ -6,7 +6,7 @@ import {
   type Edit,
   ISSEBYA_PRESET,
   parseEdit,
-  questionShownAt,
+  revealShownAt,
   resolveTimeline,
   transcriptSchema,
 } from "@edit-issebya/edit";
@@ -898,7 +898,7 @@ test("a question matches between preview and export mid-reveal and at its end", 
     (reveal.at(-1)!.at + fadeOut) / 2,
   ].map((t) => Math.round(t * 100) / 100);
   const whole = reveal.map((word) => word.text).join(" ");
-  const expected = moments.map((t) => questionShownAt(reveal, t));
+  const expected = moments.map((t) => revealShownAt(reveal, t));
   // Two different partial states, then the whole question with its mark.
   expect(new Set(expected).size).toBe(3);
   expect(expected[2]).toBe(whole);

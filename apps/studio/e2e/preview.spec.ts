@@ -5,7 +5,7 @@ import {
   type Edit,
   ISSEBYA_PRESET,
   parseEdit,
-  questionShownAt,
+  revealShownAt,
   resolveTimeline,
   transcriptSchema,
 } from "@edit-issebya/edit";
@@ -17,7 +17,7 @@ import { localSupabaseAdmin } from "../test-support/local-supabase.ts";
 import { type ProcessedReel, seedProcessedReel } from "../test-support/pipeline-cache.ts";
 import { routePreviewCdn } from "../test-support/preview-routes.ts";
 import { seekOnRuler } from "../test-support/ruler.ts";
-import { questionOf, withQuestion } from "../test-support/transitions.ts";
+import { questionOf, revealOf, withAccent, withQuestion } from "../test-support/transitions.ts";
 import { saveTestVersion } from "../test-support/versions.ts";
 import { claimableJobIds } from "../test-support/worker.ts";
 import { eventsNamed, recordEvents } from "./events.ts";
@@ -400,7 +400,7 @@ test("a question builds up word by word as it is spoken, with a question mark at
     const next = reveal[index + 1]?.at ?? end - ISSEBYA_PRESET.caption.outSeconds;
     const t = (word.at + next) / 2;
     await setPosition(page, t);
-    const shown = questionShownAt(reveal, t);
+    const shown = revealShownAt(reveal, t);
     expect(shown.split(" ")).toHaveLength(index + 1);
     await expect.poll(onScreen).toBe(shown);
     expect(shown.includes("?")).toBe(index === reveal.length - 1);
@@ -417,6 +417,113 @@ test("a question builds up word by word as it is spoken, with a question mark at
   for (const word of ["clip", "real", "studio"]) {
     expect(captions.join(" ")).not.toContain(word);
   }
+});
+
+// The word-by-word entrance (app_docs/edit-model.md, "The word-by-word
+// entrance"): an ACCENT on the fixture clip ("test clip for the real studio",
+// w0005 to w0010) and its captions build up word by word, each word cutting in
+// as it is spoken, in its final place from the start; the captions under the
+// accent stay off the page.
+test("an accent and a caption build up word by word as they are spoken", async ({
+  page,
+  baseURL,
+}) => {
+  await routePreviewCdn(page);
+  await openReel(page, baseURL!);
+  const transcript = await fixtureTranscript();
+  const stored = await storage.get(reel!.versionKey);
+  const parsed = parseEdit(
+    JSON.parse(new TextDecoder().decode(stored!)),
+    ISSEBYA_PRESET,
+    transcript,
+  );
+  expect(parsed.ok, parsed.ok ? "" : parsed.reasons.join("; ")).toBe(true);
+  const edit = await withAccent((parsed as { ok: true; edit: Edit }).edit, transcript);
+  const saved = await saveTestVersion({
+    admin,
+    storage,
+    prefix: CACHE_PREFIX,
+    reelId: reel!.reelId,
+    edit,
+    changeSummary: "an accent",
+  });
+  extraKeys.push(saved.key);
+  await expect(
+    page.locator(`[data-preview-version="${saved.id}"][data-preview="ready"]`),
+  ).toBeVisible({ timeout: 30_000 });
+
+  const frame = composition(page);
+  // The words of a text on screen: at full opacity inside a text at full
+  // opacity. A word that was still fading or rising in would not count.
+  const onScreen = (id: string) =>
+    frame.locator(`[id="${id}"]`).evaluate((el) =>
+      getComputedStyle(el).opacity === "1"
+        ? [...el.querySelectorAll<HTMLElement>(".q")]
+            .filter((word) => getComputedStyle(word).opacity === "1")
+            .map((word) => word.textContent)
+            .join(" ")
+        : "",
+    );
+  const places = (id: string) =>
+    frame.locator(`[id="${id}"]`).evaluate((el) =>
+      [...el.querySelectorAll<HTMLElement>(".q")].map((word) => {
+        const box = word.getBoundingClientRect();
+        return [Math.round(box.left), Math.round(box.top)];
+      }),
+    );
+  // No rise: the text never moves.
+  const moved = (id: string) =>
+    frame.locator(`[id="${id}"]`).evaluate((el) => {
+      const { transform } = getComputedStyle(el);
+      return transform !== "none" && transform !== "matrix(1, 0, 0, 1, 0, 0)";
+    });
+
+  // The accent: every word its own element, no mark added.
+  const accent = revealOf(edit, transcript, "accent-1");
+  const whole = "test clip for the real studio";
+  expect(accent.reveal.map((word) => word.text).join(" ")).toBe(whole);
+  await expect(frame.locator('[id="accent-1"] .q')).toHaveText(whole.split(" "));
+  await setPosition(page, accent.start - 0.05);
+  await expect.poll(() => onScreen("accent-1")).toBe("");
+  const accentPlaces = await places("accent-1");
+  for (const [index, word] of accent.reveal.entries()) {
+    const next = accent.reveal[index + 1]?.at ?? accent.end - ISSEBYA_PRESET.caption.outSeconds;
+    const t = (word.at + next) / 2;
+    await setPosition(page, t);
+    const shown = revealShownAt(accent.reveal, t);
+    expect(shown.split(" ")).toHaveLength(index + 1);
+    await expect.poll(() => onScreen("accent-1")).toBe(shown);
+    expect(await places("accent-1")).toEqual(accentPlaces);
+    expect(await moved("accent-1")).toBe(false);
+  }
+  // The captions of the accent's words stay hidden: they are not on the page.
+  for (const id of ["cw0005", "cw0006", "cw0007", "cw0008", "cw0009", "cw0010"]) {
+    await expect(frame.locator(`[id="${id}"]`)).toHaveCount(0);
+  }
+
+  // The captions: "this" on its word, then "is so" (one spoken word written as
+  // two, so both words cut in together), each whole a moment after its word
+  // starts, with no fade in and no rise.
+  const first = revealOf(edit, transcript, "cw0001");
+  const fixed = revealOf(edit, transcript, "cw0002");
+  expect(first.reveal.map((word) => word.text)).toEqual(["this"]);
+  expect(fixed.reveal).toEqual([
+    { text: "is", at: fixed.start },
+    { text: "so", at: fixed.start },
+  ]);
+  await expect(frame.locator('[id="cw0002"] .q')).toHaveText(["is", "so"]);
+  const fixedPlaces = await places("cw0002");
+  // Between the two words: the first caption is on, the second not yet.
+  await setPosition(page, (first.start + fixed.start) / 2);
+  await expect.poll(() => onScreen("cw0001")).toBe("this");
+  await expect.poll(() => onScreen("cw0002")).toBe("");
+  // 0.03 s after its word starts the second caption is whole: the old 0.18 s
+  // rise would still be fading in.
+  await setPosition(page, fixed.start + 0.03);
+  await expect.poll(() => onScreen("cw0002")).toBe("is so");
+  expect(await moved("cw0002")).toBe(false);
+  expect(await places("cw0002")).toEqual(fixedPlaces);
+  await expect.poll(() => onScreen("cw0001")).toBe("this");
 });
 
 // The LIST the decide step scripts on the speech clip
@@ -539,9 +646,9 @@ test.describe("a LIST item on the speech clip", () => {
       await expect(frame.locator(`#${id}`)).toHaveCount(0);
     }
 
-    // Once the layer has left, the next caption shows as usual: cw0033 fades in
-    // over caption.inSeconds from its start and out over caption.outSeconds at
-    // its end. The layer and the caption never share a moment (the layer ends
+    // Once the layer has left, the next caption shows as usual: cw0033 cuts in
+    // at its start (checked from caption.inSeconds on, the length of the rise it
+    // had before) and fades out over caption.outSeconds at its end. The layer and the caption never share a moment (the layer ends
     // where the caption starts), so the caption is checked at full opacity
     // between the two fades.
     expect(layer.end).toBeLessThanOrEqual(next.start + 1e-6);

@@ -16,46 +16,57 @@
       .f-simple { font-family: "Inter Tight SemiBold", sans-serif; font-weight: 600; font-style: normal; }
       .f-artistic { font-family: "Playfair Display Italic", sans-serif; font-weight: 400; font-style: italic; }
       .hook { text-align: center; }
+      .q { opacity: 0; }
     </style>
   </head>
   <body>
     <div id="root" data-composition-id="main" data-start="0" data-duration="2.667" data-width="1080" data-height="1920">
       <video id="footage" class="clip full" src="source.mp4" playsinline data-start="0.000" data-duration="2.667" data-track-index="1" data-has-audio="true"></video>
       <div id="text" class="clip" data-start="0.000" data-duration="2.667" data-track-index="50">
-        <span id="cw0001" class="text f-simple" style="left: 391px; top: 1290px; font-size: 50px; color: #FFFFFF">this</span>
-        <span id="cw0002" class="text f-simple" style="left: 484px; top: 1290px; font-size: 50px; color: #FFFFFF">is</span>
-        <span id="cw0003" class="text f-simple" style="left: 532px; top: 1290px; font-size: 50px; color: #FFFFFF">a</span>
-        <span id="cw0004" class="text f-simple" style="left: 569px; top: 1290px; font-size: 50px; color: #FFFFFF">short</span>
-        <span id="cw0005" class="text f-simple" style="left: 451px; top: 1290px; font-size: 50px; color: #FFFFFF">test</span>
-        <span id="cw0006" class="text f-simple" style="left: 549px; top: 1290px; font-size: 50px; color: #FFFFFF">clip</span>
-        <span id="cw0007" class="text f-simple" style="left: 344px; top: 1290px; font-size: 50px; color: #FFFFFF">for</span>
-        <span id="cw0008" class="text f-simple" style="left: 417px; top: 1290px; font-size: 50px; color: #FFFFFF">the</span>
-        <span id="cw0009" class="text f-simple" style="left: 502px; top: 1290px; font-size: 50px; color: #FFFFFF">real</span>
-        <span id="cw0010" class="text f-simple" style="left: 595px; top: 1290px; font-size: 50px; color: #FFFFFF">studio</span>
+        <span id="cw0001" class="text f-simple" style="left: 391px; top: 1290px; font-size: 50px; color: #FFFFFF"><span id="cw0001_w1" class="q">this</span></span>
+        <span id="cw0002" class="text f-simple" style="left: 484px; top: 1290px; font-size: 50px; color: #FFFFFF"><span id="cw0002_w1" class="q">is</span></span>
+        <span id="cw0003" class="text f-simple" style="left: 532px; top: 1290px; font-size: 50px; color: #FFFFFF"><span id="cw0003_w1" class="q">a</span></span>
+        <span id="cw0004" class="text f-simple" style="left: 569px; top: 1290px; font-size: 50px; color: #FFFFFF"><span id="cw0004_w1" class="q">short</span></span>
+        <span id="cw0005" class="text f-simple" style="left: 451px; top: 1290px; font-size: 50px; color: #FFFFFF"><span id="cw0005_w1" class="q">test</span></span>
+        <span id="cw0006" class="text f-simple" style="left: 549px; top: 1290px; font-size: 50px; color: #FFFFFF"><span id="cw0006_w1" class="q">clip</span></span>
+        <span id="cw0007" class="text f-simple" style="left: 344px; top: 1290px; font-size: 50px; color: #FFFFFF"><span id="cw0007_w1" class="q">for</span></span>
+        <span id="cw0008" class="text f-simple" style="left: 417px; top: 1290px; font-size: 50px; color: #FFFFFF"><span id="cw0008_w1" class="q">the</span></span>
+        <span id="cw0009" class="text f-simple" style="left: 502px; top: 1290px; font-size: 50px; color: #FFFFFF"><span id="cw0009_w1" class="q">real</span></span>
+        <span id="cw0010" class="text f-simple" style="left: 595px; top: 1290px; font-size: 50px; color: #FFFFFF"><span id="cw0010_w1" class="q">studio</span></span>
         <span id="hook" class="text hook f-artistic" style="left: 195px; top: 220px; font-size: 110px; color: #FFFFFF">A short test for<br />the real studio</span>
       </div>
     </div>
     <script>
       const tl = gsap.timeline({ paused: true });
-      tl.fromTo("#cw0001", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 0.076);
+      tl.fromTo("#cw0001", { opacity: 0 }, { opacity: 1, duration: 0.001 }, 0.076);
+      tl.fromTo("#cw0001_w1", { opacity: 0 }, { opacity: 1, duration: 0.001 }, 0.076);
       tl.to("#cw0001", { opacity: 0, duration: 0.15 }, 0.688);
-      tl.fromTo("#cw0002", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 0.324);
+      tl.fromTo("#cw0002", { opacity: 0 }, { opacity: 1, duration: 0.001 }, 0.324);
+      tl.fromTo("#cw0002_w1", { opacity: 0 }, { opacity: 1, duration: 0.001 }, 0.324);
       tl.to("#cw0002", { opacity: 0, duration: 0.15 }, 0.688);
-      tl.fromTo("#cw0003", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 0.457);
+      tl.fromTo("#cw0003", { opacity: 0 }, { opacity: 1, duration: 0.001 }, 0.457);
+      tl.fromTo("#cw0003_w1", { opacity: 0 }, { opacity: 1, duration: 0.001 }, 0.457);
       tl.to("#cw0003", { opacity: 0, duration: 0.15 }, 0.707);
-      tl.fromTo("#cw0004", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 0.552);
+      tl.fromTo("#cw0004", { opacity: 0 }, { opacity: 1, duration: 0.001 }, 0.552);
+      tl.fromTo("#cw0004_w1", { opacity: 0 }, { opacity: 1, duration: 0.001 }, 0.552);
       tl.to("#cw0004", { opacity: 0, duration: 0.15 }, 0.802);
-      tl.fromTo("#cw0005", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 0.838);
+      tl.fromTo("#cw0005", { opacity: 0 }, { opacity: 1, duration: 0.001 }, 0.838);
+      tl.fromTo("#cw0005_w1", { opacity: 0 }, { opacity: 1, duration: 0.001 }, 0.838);
       tl.to("#cw0005", { opacity: 0, duration: 0.15 }, 1.317);
-      tl.fromTo("#cw0006", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 1.2);
+      tl.fromTo("#cw0006", { opacity: 0 }, { opacity: 1, duration: 0.001 }, 1.2);
+      tl.fromTo("#cw0006_w1", { opacity: 0 }, { opacity: 1, duration: 0.001 }, 1.2);
       tl.to("#cw0006", { opacity: 0, duration: 0.15 }, 1.45);
-      tl.fromTo("#cw0007", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 1.467);
+      tl.fromTo("#cw0007", { opacity: 0 }, { opacity: 1, duration: 0.001 }, 1.467);
+      tl.fromTo("#cw0007_w1", { opacity: 0 }, { opacity: 1, duration: 0.001 }, 1.467);
       tl.to("#cw0007", { opacity: 0, duration: 0.15 }, 2.517);
-      tl.fromTo("#cw0008", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 1.6);
+      tl.fromTo("#cw0008", { opacity: 0 }, { opacity: 1, duration: 0.001 }, 1.6);
+      tl.fromTo("#cw0008_w1", { opacity: 0 }, { opacity: 1, duration: 0.001 }, 1.6);
       tl.to("#cw0008", { opacity: 0, duration: 0.15 }, 2.517);
-      tl.fromTo("#cw0009", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 1.733);
+      tl.fromTo("#cw0009", { opacity: 0 }, { opacity: 1, duration: 0.001 }, 1.733);
+      tl.fromTo("#cw0009_w1", { opacity: 0 }, { opacity: 1, duration: 0.001 }, 1.733);
       tl.to("#cw0009", { opacity: 0, duration: 0.15 }, 2.517);
-      tl.fromTo("#cw0010", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 2.038);
+      tl.fromTo("#cw0010", { opacity: 0 }, { opacity: 1, duration: 0.001 }, 2.038);
+      tl.fromTo("#cw0010_w1", { opacity: 0 }, { opacity: 1, duration: 0.001 }, 2.038);
       tl.to("#cw0010", { opacity: 0, duration: 0.15 }, 2.517);
       tl.fromTo("#hook", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.18, ease: "power2.out" }, 0.2);
       tl.to("#hook", { opacity: 0, duration: 0.15 }, 2.517);
