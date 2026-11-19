@@ -10,7 +10,7 @@ import { PostHog } from "posthog-node";
 // snapshot whose `isEnabled(key, { sendFeatureFlagEvents })` reads one flag;
 // `shutdown(timeoutMs)` ends the client.
 
-/** The owner's Move editor (app_docs/owner-edits.md): on only for the owner for now. */
+/** The owner's editor (app_docs/owner-edits.md): on only for the owner for now. */
 export const OWNER_EDIT_FLAG = "studio-owner-edit";
 
 /** Who the flag is evaluated for: the Supabase user id (PostHog's distinct id) and the email. */

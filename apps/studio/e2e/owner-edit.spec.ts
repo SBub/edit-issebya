@@ -279,7 +279,7 @@ async function shot(name: string) {
   if (SHOTS) await page.screenshot({ path: join(SHOTS, name) });
 }
 
-test("Move text opens the editor on the paused preview: a text picked from the list is selected, with its kind and a handle", async ({
+test("Edit opens the editor on the paused preview: a text picked from the list is selected, with its kind and a handle", async ({
   baseURL,
 }) => {
   await page.goto(await signInLink(admin, owner.email, baseURL!));
@@ -287,8 +287,8 @@ test("Move text opens the editor on the paused preview: a text picked from the l
   await ready();
   await expect(page.locator('[data-realtime="ready"]')).toBeVisible({ timeout: 30_000 });
 
-  const toggle = page.getByTestId("move-toggle");
-  await expect(toggle).toHaveText("Move text");
+  const toggle = page.getByTestId("edit-toggle");
+  await expect(toggle).toHaveText("Edit");
   await expect(toggle).toHaveAttribute("aria-pressed", "false");
   await expect(page.getByTestId("move-layer")).toHaveCount(0);
 
@@ -611,7 +611,7 @@ test("the edge handles make a text narrower or shorter at the same size: its lin
 test("Cancel drops the draft: the version shows as it was and nothing is queued", async () => {
   await page.getByTestId("move-cancel").click();
   await expect(page.getByTestId("move-layer")).toHaveCount(0);
-  await expect(page.getByTestId("move-toggle")).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByTestId("edit-toggle")).toHaveAttribute("aria-pressed", "false");
   await ready();
   await expect(page.getByTestId("play-toggle")).toBeEnabled();
   const hook = await drawn("hook");
@@ -623,7 +623,7 @@ test("Cancel drops the draft: the version shows as it was and nothing is queued"
 
 test("Save sends the moves, and the worker saves them as a new version marked Edited by you", async () => {
   // The same two edits again, then Save.
-  await page.getByTestId("move-toggle").click();
+  await page.getByTestId("edit-toggle").click();
   await page.getByTestId("move-pick").selectOption("hook");
   await expect(moveBox("hook")).toHaveAttribute("data-selected", "true");
   await dragBy(await centreOf(moveBox("hook")), -100, 300);

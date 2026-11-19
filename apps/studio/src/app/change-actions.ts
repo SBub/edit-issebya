@@ -216,10 +216,10 @@ export async function requestOwnerEdit(input: {
   }
   const open = await openReel(input.reelId);
   if (!open.ok) return open.result;
-  // The Move editor's flag, evaluated for this user like the page does: off,
+  // The editor's flag, evaluated for this user like the page does: off,
   // nothing is queued whatever the browser sends.
   if (!(await isFlagOn(OWNER_EDIT_FLAG, { id: open.userId, email: open.email }))) {
-    return { status: "invalid", reason: "Moving is not available yet" };
+    return { status: "invalid", reason: "Editing is not available yet" };
   }
   if (open.currentVersionId === null) {
     return { status: "invalid", reason: "Editing opens once the first version is ready" };

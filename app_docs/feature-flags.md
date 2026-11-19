@@ -2,7 +2,7 @@
 
 **Specifications:**
 
-- Owner request, 2026-11-16: the owner's Move editor sits behind a PostHog feature flag, on only for
+- Owner request, 2026-11-16: the owner's editor sits behind a PostHog feature flag, on only for
   the owner for now. One flag covers the whole editor: text now, visuals later.
 - Owner decision, 2026-11-16 (visuals step 1): the one flag covers moving texts and VISUALs.
 - Owner decision, 2026-11-17 (visuals step 2): the same flag covers turning a VISUAL.
@@ -14,9 +14,9 @@
 The studio reads PostHog feature flags on the server, for the signed-in user, so a page renders
 nothing behind an off flag and a server action refuses it. There is one flag today:
 
-| Key                 | What it gates                                                                                                                                                               | Read by                                                           |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| `studio-owner-edit` | the owner's Move editor (`app_docs/owner-edits.md`) for texts and VISUALs (a VISUAL's turn, `Change picture` and `Add picture here` included): its button, the editor, Save | the reel page (`src/app/reels/[id]/page.tsx`), `requestOwnerEdit` |
+| Key                 | What it gates                                                                                                                                                          | Read by                                                           |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `studio-owner-edit` | the owner's editor (`app_docs/owner-edits.md`) for texts and VISUALs (a VISUAL's turn, `Change picture` and `Add picture here` included): its button, the editor, Save | the reel page (`src/app/reels/[id]/page.tsx`), `requestOwnerEdit` |
 
 A flag is off unless PostHog says it is on. PostHog unconfigured, unreachable, slow (over 1.5 s for
 its answer, 3 s in all) or failing means off.
@@ -38,7 +38,7 @@ its answer, 3 s in all) or failing means off.
   - `flagOverrides()`: tests only, `E2E_MOCK_FLAGS`, a comma-separated list of keys turned on for
     everyone without PostHog.
 - The reel page evaluates `studio-owner-edit` with its other reads and passes `ownerEdit` through
-  `LiveReel` to `ReelPreview`; off, `BuiltPreview` renders no `Move text` button and no editor.
+  `LiveReel` to `ReelPreview`; off, `BuiltPreview` renders no `Edit` button and no editor.
 - `requestOwnerEdit` evaluates it again for the session's user before it queues the job, so a
   crafted call with the flag off queues nothing.
 

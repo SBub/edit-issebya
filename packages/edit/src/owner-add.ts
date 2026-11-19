@@ -12,7 +12,7 @@ import { anchorAt, resolveSpans, resolveTimeline } from "./timeline.ts";
 import type { Transcript, Word } from "./transcript.ts";
 import { VARIANTS } from "./variants.ts";
 
-// THE OWNER'S ADDED CARDS (app_docs/owner-edits.md): in the Move editor the
+// THE OWNER'S ADDED CARDS (app_docs/owner-edits.md): in the editor the
 // owner adds a VISUAL showing one of their library photos at the paused
 // moment. It starts on the word under the playhead and lasts a fixed time,
 // cut short by the reel's end or a hidden stretch of footage; the studio

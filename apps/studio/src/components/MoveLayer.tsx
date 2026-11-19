@@ -241,7 +241,7 @@ export function MoveLayer({
         className="absolute inset-x-0 top-0 flex h-[11.4%] min-h-9 items-center gap-1.5 bg-black/75 px-2 text-xs text-white"
       >
         <select
-          aria-label="Text or visual to move"
+          aria-label="Text or visual to edit"
           data-testid="move-pick"
           value={selectedId ?? ""}
           disabled={saving || all.length === 0}
@@ -252,7 +252,7 @@ export function MoveLayer({
           }}
           className="h-7 min-w-0 flex-1 border border-white/40 bg-black px-1 text-xs text-white disabled:opacity-50"
         >
-          <option value="">{all.length === 0 ? "Nothing to move" : "Pick a text or visual"}</option>
+          <option value="">{all.length === 0 ? "Nothing to edit" : "Pick a text or visual"}</option>
           {all.map((entry) => (
             <option key={entry.id} value={entry.id}>
               {componentOption(entry)}

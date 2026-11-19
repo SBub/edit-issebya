@@ -68,7 +68,7 @@ interface LiveReelProps extends Snapshot {
   // The font pair the current version was set in (its edit), read on the
   // server; null when the version names none. The picker's chosen pair.
   currentFontPair: { versionId: string; fontPair: FontPairId | null } | null;
-  // Whether the owner's Move editor is on for this user (the `studio-owner-edit`
+  // Whether the owner's editor is on for this user (the `studio-owner-edit`
   // flag, evaluated on the server; app_docs/feature-flags.md).
   ownerEdit?: boolean;
 }

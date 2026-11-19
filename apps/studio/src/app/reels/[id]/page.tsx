@@ -120,7 +120,7 @@ export default async function ReelPage({ params }: { params: Promise<{ id: strin
           userId: user.id,
         }).then((fontPair) => ({ versionId: reel.current_version_id!, fontPair }))
       : Promise.resolve(null),
-    // The owner's Move editor: rendered only when its flag is on for this user.
+    // The owner's editor: rendered only when its flag is on for this user.
     isFlagOn(OWNER_EDIT_FLAG, { id: user.id, email: user.email }),
     ...PROGRESS_STEPS.map(history),
   ]);

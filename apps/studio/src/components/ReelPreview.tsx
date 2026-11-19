@@ -243,7 +243,7 @@ const SAVE_FAILED = "Your changes were not saved. Try again";
 // by version, so a new version mounts a new player, started from the
 // hand-off (the previous version's position and play or pause state).
 //
-// Move text opens the editor over the paused preview: the owner selects a
+// Edit opens the editor over the paused preview: the owner selects a
 // text component, drags it or its corner handle, and each drag builds the
 // draft again with the one builder, so what shows is what Save will save. The
 // player readies the draft's page behind the one on screen and swaps it in
@@ -265,7 +265,7 @@ function BuiltPreview({
   built: Built;
   // Why editing is off (the reel is exporting), or null.
   editBlockedReason: string | null;
-  // The Move editor's flag: off, neither its button nor the editor exists.
+  // The editor's flag: off, neither its button nor the editor exists.
   ownerEdit: boolean;
   handoff: Handoff;
   onHandoff: (change: Partial<Handoff>) => void;
@@ -563,14 +563,14 @@ function BuiltPreview({
           ownerEdit && (
             <button
               type="button"
-              data-testid="move-toggle"
+              data-testid="edit-toggle"
               aria-pressed={editing}
               title={editBlockedReason ?? "Move or resize a text on screen"}
               onClick={editing ? closeEditor : openEditor}
               disabled={frozen}
               className="hidden h-8 flex-none items-center border border-line px-2.5 text-xs hover:bg-raised disabled:opacity-50 aria-pressed:bg-raised aria-pressed:font-semibold lg:flex"
             >
-              Move text
+              Edit
             </button>
           )
         }
@@ -650,12 +650,12 @@ export function ReelPreview({
 }: {
   reelId: string;
   versionId: string | null;
-  // Why editing this reel is off (it is exporting), or null: the Move editor
+  // Why editing this reel is off (it is exporting), or null: the editor
   // cannot be opened, and an open one is frozen with this line.
   editBlockedReason?: string | null;
   // The reel's jobs: the editor follows the job its Save queued.
   jobs?: readonly LiveJob[];
-  // Whether the owner's Move editor is on (the `studio-owner-edit` flag).
+  // Whether the owner's editor is on (the `studio-owner-edit` flag).
   ownerEdit?: boolean;
 }) {
   const [outcome, setOutcome] = useState<Outcome | null>(null);

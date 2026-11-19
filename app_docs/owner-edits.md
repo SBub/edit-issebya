@@ -32,10 +32,12 @@ picture here` open one picker of all the owner's ready library photos, newest fi
   1.5 s (clipped to the reel's end), placed in a corner by the engine's placement; it cannot be
   added over hidden footage. Several cards may show at once, an added one on top. Deleting a
   library photo a version uses stays allowed, with a warning first that counts the versions.
+- Owner decisions, 2026-11-19 (the Edit mode):
+  1. The button `Move text` is renamed `Edit`: the mode is for more than moving.
 
 ## Overview
 
-On a reel's page the owner presses `Move text`, selects a text component on the paused preview (an
+On a reel's page the owner presses `Edit`, selects a text component on the paused preview (an
 accent, a question, a big word, a list or the hook) or a VISUAL card, drags it to move it, drags its
 corner handle to resize it, (a text) drags an edge handle to make its box wider, narrower, taller
 or shorter or (a VISUAL) drags its rotate handle to turn it, and presses Save. Save queues an `owner_edit` job; the worker applies the moves to the
@@ -217,7 +219,7 @@ your library`). The card then shows the photo (`photo: { id, width, height }`, i
 ### The editor (`apps/studio`)
 
 - `isMovable` (`MOVABLE_COMPONENTS`): the five text kinds and `VISUAL`.
-- `src/components/ReelPreview.tsx` (`BuiltPreview`): the `Move text` button (`data-testid="move-toggle"`,
+- `src/components/ReelPreview.tsx` (`BuiltPreview`): the `Edit` button (`data-testid="edit-toggle"`,
   `aria-pressed`) in the player's control row, before `Zones`; desktop only (`lg:`), built for a
   mouse. It pauses the preview and shows the editor; Play is off while it is open; the ruler still
   seeks. The draft is the version's edit with the moves so far. Each finished drag is settled
@@ -256,7 +258,7 @@ your library`). The card then shows the photo (`photo: { id, width, height }`, i
 - `src/components/MoveLayer.tsx`: the layer over the frame (`data-testid="move-layer"`), given to
   `PreviewPlayer` as its `overlay`.
   - A bar on top (`move-bar`), as tall as the frame's top margin, which the platforms cover and no
-    text sits in: the list (`move-pick`, a `select` named `Text or visual to move`, first line
+    text sits in: the list (`move-pick`, a `select` named `Text or visual to edit`, first line
     `Pick a text or visual`, one line per movable component, `Kind: text`; a VISUAL's text is its
     description), `Cancel` (`move-cancel`) and `Save` (`move-save`, off until
     something is moved).
@@ -329,14 +331,14 @@ there`, or why a save did not start.
   `scaledVisual`, `snapAngle`, `turnOfPointer`, `draggedTurn` (the turn a card shows while dragged),
   `withMove`, `boxStyle`.
 - Save calls `requestOwnerEdit` (`src/app/change-actions.ts`): it checks the shape of the moves
-  (`parseOwnerMoves`), refuses when the `studio-owner-edit` flag is off for the user, refuses a blocked reel like going back does (`changeBlockedReason`, which includes a reel that is exporting: `Move text` cannot be opened then, and an open editor is frozen with the reason and keeps its draft, `app_docs/export.md`) and inserts
+  (`parseOwnerMoves`), refuses when the `studio-owner-edit` flag is off for the user, refuses a blocked reel like going back does (`changeBlockedReason`, which includes a reel that is exporting: `Edit` cannot be opened then, and an open editor is frozen with the reason and keeps its draft, `app_docs/export.md`) and inserts
   the job `{ kind: "owner_edit", owner_edit: { version_id, moves, adds? } }` under RLS (`adds`
   only when the owner added a card; `moves` may then be empty). The browser never sends a photo's
   size. The editor then waits
   for its job (`jobs` from `LiveReel`): the progress overlay shows `Saving your changes`, the new
   version replaces the preview by itself like any new version, and the editor closes. A failed job
   leaves the draft open with `Your changes were not saved. Try again`.
-- Cancel (or `Move text` again) drops the draft and shows the version as it was. Nothing is queued.
+- Cancel (or `Edit` again) drops the draft and shows the version as it was. Nothing is queued.
 - `src/components/VersionList.tsx`, `src/lib/change-requests.ts`: a version with `edited_from_id`
   reads `Edited by you` (`versionOrigin`, `versionTitle`; the row carries `data-edited`), and its
   details add `You moved or resized text in vN` (`editedFromLabel`, `version-edited-from`). A going
@@ -489,7 +491,7 @@ order by created_at;
 ## How to Use
 
 1. Open a reel in the studio on a desktop and wait for the preview.
-2. Press `Move text` under the preview. The preview pauses and a bar appears on top of it.
+2. Press `Edit` under the preview. The preview pauses and a bar appears on top of it.
 3. Select a text or a visual card: click its box on the preview (go to a moment where it shows with
    the ruler), or pick it from the list in the bar. Its kind shows above its box.
 4. Drag the box to move it. Drag the square handle at its bottom right corner to make it larger or
@@ -516,9 +518,9 @@ order by created_at;
 ## Configuration
 
 The whole editor sits behind the PostHog feature flag `studio-owner-edit`, which gates the owner's
-Move editor (`app_docs/feature-flags.md`). It is evaluated on the server for the signed-in user:
-off, the reel page renders neither the `Move text` button nor the editor, and `requestOwnerEdit`
-refuses (`Moving is not available yet`) before anything is queued. PostHog unconfigured, slow or
+editor (`app_docs/feature-flags.md`). It is evaluated on the server for the signed-in user:
+off, the reel page renders neither the `Edit` button nor the editor, and `requestOwnerEdit`
+refuses (`Editing is not available yet`) before anything is queued. PostHog unconfigured, slow or
 unreachable means off. The specs turn it on with `E2E_MOCK_FLAGS=studio-owner-edit` (the studio's
 Playwright config and the ADW dev command set it). The job needs no AI and no prompt. A moved big word that now needs a cut-out uses the mask tool
 like decide does (`E2E_MOCK_MASK` in specs).

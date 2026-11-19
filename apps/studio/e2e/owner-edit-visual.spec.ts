@@ -171,7 +171,7 @@ test("a VISUAL picked from the list is selected with its kind and a corner handl
   await page.goto(await signInLink(admin, owner.email, baseURL!));
   await page.goto(`/studio/reels/${reel!.reelId}`);
   await ready();
-  await page.getByTestId("move-toggle").click();
+  await page.getByTestId("edit-toggle").click();
   await expect(page.getByTestId("move-layer")).toBeVisible();
   const pick = page.getByTestId("move-pick");
   await expect(pick.locator("option")).toContainText(["Visual: a phone on a desk"]);
@@ -391,7 +391,7 @@ test("Save makes a new version with the VISUAL's new box, and a learning row for
 });
 
 test("a VISUAL dragged into a corner past the safe zone and the frame's edge stays there, and Save keeps it there", async () => {
-  await page.getByTestId("move-toggle").click();
+  await page.getByTestId("edit-toggle").click();
   await expect(page.getByTestId("move-layer")).toBeVisible();
   await page.getByTestId("move-pick").selectOption(CARD);
   await ready();
