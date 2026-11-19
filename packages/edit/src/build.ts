@@ -35,18 +35,19 @@ export function maskPath(mask: Pick<EditMask, "fingerprint">): string {
   return `masks/${mask.fingerprint}.mp4`;
 }
 
-// A VISUAL: an empty white stroke frame (transparent inside), a corner card of
-// the preset's stroke width.
+// A VISUAL: an empty white stroke frame (transparent inside) with rounded
+// corners (16 px), a corner card of the preset's stroke width.
 const visualStyle = (stroke: number) =>
-  `      .visual { position: absolute; box-sizing: border-box; border: ${stroke}px solid #ffffff; background: transparent; }`;
+  `      .visual { position: absolute; box-sizing: border-box; border: ${stroke}px solid #ffffff; background: transparent; border-radius: 16px; }`;
 
 // A VISUAL with its stand-in picture or library photo: the picture fills the card's box exactly
 // (the box has the picture's aspect, so nothing is cropped), and the stroke is
-// drawn over it as the card's own frame.
+// drawn over it as the card's own frame. The card clips the picture to its
+// rounded corners.
 const visualPictureStyle = (stroke: number) => [
-  "      .visual-picture { position: absolute; box-sizing: border-box; }",
-  "      .visual-picture img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; }",
-  `      .visual-picture::after { content: ""; position: absolute; inset: 0; border: ${stroke}px solid #ffffff; box-sizing: border-box; }`,
+  "      .visual-picture { position: absolute; box-sizing: border-box; border-radius: 16px; overflow: hidden; }",
+  "      .visual-picture img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; border-radius: 16px; }",
+  `      .visual-picture::after { content: ""; position: absolute; inset: 0; border: ${stroke}px solid #ffffff; box-sizing: border-box; border-radius: 16px; }`,
 ];
 
 // The extra rules a page with a cut-out needs: the composite's groups and

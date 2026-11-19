@@ -44,10 +44,11 @@ types until slice 9 brings the live preview.
   It may carry an optional
   `description` (a short plain phrase of what the frame would show, at most 120 characters, the
   decide answer's own limit is 8 words), which is never shown on screen; the builder draws a
-  `div.clip.visual` with a white border of the `visual/card` entry's stroke (8 px), transparent
+  `div.clip.visual` with a white border of the `visual/card` entry's stroke (2 px) and rounded corners (16 px), transparent
   inside (the `.visual` rule is written only on a page with a visual). With `image`, the builder draws
   `div.clip.visual-picture` filling the box with an `<img>` of the same box (no crop), the stroke drawn
-  over it (the `.visual-picture` rules). Or a big word (`kind: "word"`,
+  over it (the `.visual-picture` rules: the card, its picture and its stroke share the 16 px radius, and the
+  card hides what is outside it). Or a big word (`kind: "word"`,
   `text` one or two words of 1 to 24 characters each, with no space inside a
   word and no `<`, `>` or `&`, the two joined by one space: "distribution channel"). It is anchored
   on words like a caption (a big word starts on its first word with a negative
@@ -160,7 +161,8 @@ and rule 6 (`engine-place.ts`).
   below the highest robust face's top (`facesOver`, the faces the placer reads) over its padded span less
   `HAIR_MARGIN` 20 px); no head sample in the span, no cut-out. The big word's font and colour are the `bigWord` style's; its face rule (30% of its
   height at most behind the head) is rule 6 in `engine-place.ts`. A VISUAL's card is the `visual/card`
-  entry's: a white stroke of 8 px (the style's `stroke.px`, read by the builder's `.visual` rule), its
+  entry's: a thin white stroke of 2 px (the style's `stroke.px`, read by the builder's `.visual` rule) with corners
+  rounded 16 px (the builder's own value), its
   width a third of the frame, its height the stand-in picture's own aspect (no crop), its timing 1 s to 2 s (`words-min-max`), a short beat rather than a
   backdrop. The card's corner inset (40 px) is the zone table's `corner`. No count per reel.
 - Visuals: a white stroke frame over the footage, in front of the speaker, no fill and no text
