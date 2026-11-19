@@ -74,18 +74,20 @@ describe("relistenSpots: the gap rule", () => {
 
   it("finds 0.45 s of speech-level sound in a gap of the transcript", () => {
     const envelope = envelopeOf(words, 6, [[2, 2.5]]);
-    expect(relistenSpots({ words, envelope, settings: S })).toEqual([
+    expect(relistenSpots({ words, envelope, settings: S, language: "en" })).toEqual([
       { start: 2, end: 2.5, kinds: ["gap"] },
     ]);
   });
 
   it("leaves a shorter burst alone, which retime still keeps as a possible missed word", () => {
     const envelope = envelopeOf(words, 6, [[2, 2.4]]);
-    expect(relistenSpots({ words, envelope, settings: S })).toEqual([]);
+    expect(relistenSpots({ words, envelope, settings: S, language: "en" })).toEqual([]);
   });
 
   it("finds nothing in a quiet gap, however long", () => {
-    expect(relistenSpots({ words, envelope: envelopeOf(words, 6), settings: S })).toEqual([]);
+    expect(
+      relistenSpots({ words, envelope: envelopeOf(words, 6), settings: S, language: "en" }),
+    ).toEqual([]);
   });
 });
 
@@ -95,24 +97,46 @@ describe("stretchedWords", () => {
 
   it("finds a word 3 times slower per letter and 0.4 s too long", () => {
     const words = wordsOf(...steady, "And@2-3.2");
-    expect(stretchedWords(words, S).map((word) => word.text)).toEqual(["And"]);
+    expect(stretchedWords(words, S, "en").map((word) => word.text)).toEqual(["And"]);
   });
 
   it("leaves a long word that is only long: slow enough per letter, not 0.4 s over", () => {
     // "a" at 0.3 s is 6 times the median but only 0.25 s over it.
     const words = wordsOf(...steady, "a@2-2.3");
-    expect(stretchedWords(words, S)).toEqual([]);
+    expect(stretchedWords(words, S, "en")).toEqual([]);
   });
 
   it("leaves a word 0.4 s over that is not 3 times slower per letter", () => {
     // 10 letters in 1.0 s: 0.5 s over the median's 0.5 s, but only twice as slow.
     const words = wordsOf(...steady, "everything@2-3");
-    expect(stretchedWords(words, S)).toEqual([]);
+    expect(stretchedWords(words, S, "en")).toEqual([]);
   });
 
-  it("skips a word the aligner cannot spell", () => {
-    const words = wordsOf(...steady, "2026@2-4");
-    expect(stretchedWords(words, S)).toEqual([]);
+  it("measures a word of digits by the letters of its spoken form", () => {
+    // "2027." is said "twenty twenty seven": 17 letters, 0.85 s at the median.
+    // Over 5.76 s it is stretched; over 0.9 s it is not.
+    const stretched = wordsOf(...steady, "in@2-2.1", "2027.@2.1-7.86");
+    expect(stretchedWords(stretched, S, "en").map((word) => word.text)).toEqual(["2027."]);
+    const spoken = wordsOf(...steady, "in@2-2.1", "2027.@2.1-3");
+    expect(stretchedWords(spoken, S, "en")).toEqual([]);
+  });
+
+  it("measures a symbol the same way: 50% is fifty percent, 12 letters", () => {
+    const words = wordsOf(...steady, "50%@2-5");
+    expect(stretchedWords(words, S, "en").map((word) => word.text)).toEqual(["50%"]);
+  });
+
+  it("skips a word with no letters even when spoken: a dash, digits in another language", () => {
+    expect(stretchedWords(wordsOf(...steady, "-@2-4"), S, "en")).toEqual([]);
+    expect(stretchedWords(wordsOf(...steady, "2026@2-4"), S, "xx")).toEqual([]);
+  });
+
+  it("makes a stretched number a re-listen spot", () => {
+    const words = wordsOf(...steady, "in@2-2.1", "2027.@2.1-7.86", "How@7.86-8");
+    const envelope = envelopeOf(words, 9);
+    expect(relistenSpots({ words, envelope, settings: S, language: "en" })).toEqual([
+      { start: 2.1, end: 7.86, kinds: ["word"] },
+    ]);
   });
 });
 
@@ -122,7 +146,7 @@ describe("relistenSpots: joining", () => {
       [102.37, 103.06],
       [104.5, 104.97],
     ]);
-    expect(relistenSpots({ words: REEL, envelope, settings: S })).toEqual([
+    expect(relistenSpots({ words: REEL, envelope, settings: S, language: "en" })).toEqual([
       { start: 102.37, end: 104.97, kinds: ["gap", "word", "gap"] },
     ]);
   });
@@ -133,7 +157,7 @@ describe("relistenSpots: joining", () => {
       [2, 2.5],
       [3.6, 4.1],
     ]);
-    expect(relistenSpots({ words, envelope, settings: S })).toEqual([
+    expect(relistenSpots({ words, envelope, settings: S, language: "en" })).toEqual([
       { start: 2, end: 2.5, kinds: ["gap"] },
       { start: 3.6, end: 4.1, kinds: ["gap"] },
     ]);

@@ -8,6 +8,7 @@
 // letter. No rule of our own moves a time.
 import type { Word } from "./transcript.ts";
 import { ALIGN_MODEL } from "./align-model.ts";
+import { spokenParts } from "./spoken-form.ts";
 
 // Every aligner setting; part of transcribe's fingerprint.
 export const ALIGN_SETTINGS = {
@@ -24,6 +25,18 @@ export const ALIGN_SETTINGS = {
   chunkSeconds: 20,
   contextSeconds: 1,
   provider: "cpu",
+  // A word the model still cannot spell is placed on the sound inside the
+  // space it was given (unspelled.ts): the frames no more than belowSpeechDb
+  // under the clip's speech level, joined over breaks of up to bridgeSeconds,
+  // plus marginSeconds; nominalSeconds per word when the space has no such
+  // sound. The envelope's frames are envelopeFrameSeconds long.
+  unspelled: {
+    belowSpeechDb: 10,
+    bridgeSeconds: 0.25,
+    marginSeconds: 0.05,
+    nominalSeconds: 0.1,
+    envelopeFrameSeconds: 0.01,
+  },
 } as const;
 
 export type AlignSettings = typeof ALIGN_SETTINGS;
@@ -84,7 +97,7 @@ export const VOCABULARY_SIZE = 32;
 
 // A word's letters as model tokens: accents dropped, capitals, only what the
 // model spells (letters and the apostrophe). "Don't," is D O N ' T; "2026" and
-// "%" have none.
+// "%" have none of their own (spokenTokens reads them first).
 export function wordTokens(text: string): number[] {
   return [...text.normalize("NFD").toUpperCase()]
     .map((char) => LETTERS[char])
@@ -212,30 +225,65 @@ function ms(seconds: number): number {
   return Math.round(seconds * 1000) / 1000;
 }
 
-// The aligner's tokens for a transcript: each word's letters, words joined by
-// the separator; and, per word, the indices of its own tokens (none for a word
-// the model cannot spell).
-export function transcriptTokens(words: readonly Word[]): {
+// Each word as the model's tokens, by its spoken form (spoken-form.ts): the
+// letters of every spoken part, the separator between two parts. "2027." is
+// TWENTY|TWENTY|SEVEN, "50%" FIFTY|PERCENT, "Don't," D O N ' T. A word with
+// nothing the model spells (a lone dash, another script) has none. Only the
+// aligner and the re-listen's letter count read this: the stored text of a
+// word never changes.
+export function spokenTokens(texts: readonly string[], language: string): number[][] {
+  return spokenParts(texts, language).map((parts) => {
+    const tokens: number[] = [];
+    for (const part of parts) {
+      const letters = wordTokens(part);
+      if (letters.length === 0) continue;
+      if (tokens.length > 0) tokens.push(SEPARATOR);
+      tokens.push(...letters);
+    }
+    return tokens;
+  });
+}
+
+// How many letters each word's spoken form has (separators not counted).
+export function spokenLetters(texts: readonly string[], language: string): number[] {
+  return spokenTokens(texts, language).map(
+    (tokens) => tokens.filter((token) => token !== SEPARATOR).length,
+  );
+}
+
+// The aligner's tokens for a transcript: each word's spoken tokens, words
+// joined by the separator; and, per word, the indices of its own tokens (none
+// for a word the model cannot spell). A word of several spoken parts owns all
+// of them, so it starts with its first part and ends with its last.
+export function transcriptTokens(
+  words: readonly Word[],
+  language: string,
+): {
   tokens: number[];
   owned: number[][];
 } {
   const tokens: number[] = [];
   const owned: number[][] = [];
-  for (const word of words) {
-    const letters = wordTokens(word.text);
-    if (letters.length > 0 && tokens.length > 0) tokens.push(SEPARATOR);
-    owned.push(letters.map((_, i) => tokens.length + i));
-    tokens.push(...letters);
+  const spoken = spokenTokens(
+    words.map((word) => word.text),
+    language,
+  );
+  for (const own of spoken) {
+    if (own.length > 0 && tokens.length > 0) tokens.push(SEPARATOR);
+    owned.push(own.map((_, i) => tokens.length + i));
+    tokens.push(...own);
   }
   return { tokens, owned };
 }
 
 // The transcript at the aligner's times (pure): a word lasts from its first
-// letter's first frame to its last letter's last frame end. A word the model
-// cannot spell (digits, symbols) is not placed by the model: it and any such
-// neighbours share the gap between the placed words around them, evenly, in
-// order (from the clip's start or to its end at the edges). A transcript with
-// no word the model can spell keeps Whisper's times. Ids and texts never change.
+// letter's first frame to its last letter's last frame end (the first and
+// last letters of its spoken form). A word the model cannot spell is not
+// placed by the model: it and any such neighbours get the space between the
+// placed words around them, evenly, in order (from the clip's start or to its
+// end at the edges), and transcribe then narrows that space to its sound
+// (unspelled.ts). A transcript with no word the model can spell keeps
+// Whisper's times. Ids and texts never change.
 export function alignedTranscript(
   words: readonly Word[],
   owned: readonly number[][],

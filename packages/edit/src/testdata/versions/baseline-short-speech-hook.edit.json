@@ -6,17 +6,17 @@
   "inputs": {
     "footage": {
       "step": "retime",
-      "fingerprint": "6983f4caa4aabb52e58d5f096acbdb270a9dca06c257201635407d63f6aadb9e",
+      "fingerprint": "2f48c160261fb4153efeba15747ae568579e25770fe392d0e118e46aae540bc3",
       "file": "source.mp4"
     },
     "transcript": {
       "step": "retime",
-      "fingerprint": "6983f4caa4aabb52e58d5f096acbdb270a9dca06c257201635407d63f6aadb9e",
+      "fingerprint": "2f48c160261fb4153efeba15747ae568579e25770fe392d0e118e46aae540bc3",
       "file": "transcript.json"
     },
     "head_track": {
       "step": "head_track",
-      "fingerprint": "9db7ca76fbf2413f91cc3533d2b8e8cc945d5e455daa2af8fa27a978cac14317",
+      "fingerprint": "4998b864ab21f7e5bdf150636c35be0907e8267ed8f958d9cc106f63df0c2b11",
       "file": "head-track.json"
     }
   },

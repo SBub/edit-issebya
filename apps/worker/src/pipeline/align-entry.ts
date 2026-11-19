@@ -4,10 +4,12 @@
 //
 //   align-entry --input <media> --words <transcript.json> --output <json>
 //               --threads <n> --model <onnx> --ffmpeg <path> --emissions <file>
+//               --language <code>
 //
 // Checks the model against its pinned SHA-256; ffmpeg decodes the audio to
 // 16 kHz mono; the model hears it in chunks (align.ts, chunksOf), and the
-// forced alignment places the words (alignedTranscript). Written to
+// forced alignment places the words (alignedTranscript), each spelled by its
+// spoken form in <language> (spoken-form.ts; the texts stay as written). Written to
 // <output>.part, renamed to <output> once finished. The model's letter
 // probabilities are saved to <emissions>; when that file is already there
 // (the same audio aligned again with other words), they are read from it and
@@ -42,9 +44,19 @@ interface Options {
   model: string;
   ffmpeg: string;
   emissions: string;
+  language: string;
 }
 
-const NAMES = ["--input", "--words", "--output", "--threads", "--model", "--ffmpeg", "--emissions"];
+const NAMES = [
+  "--input",
+  "--words",
+  "--output",
+  "--threads",
+  "--model",
+  "--ffmpeg",
+  "--emissions",
+  "--language",
+];
 
 function parseOptions(argv: string[]): Options {
   const flags = new Map<string, string>();
@@ -68,6 +80,7 @@ function parseOptions(argv: string[]): Options {
     model: flags.get("--model")!,
     ffmpeg: flags.get("--ffmpeg")!,
     emissions: flags.get("--emissions")!,
+    language: flags.get("--language")!,
   };
 }
 
@@ -160,7 +173,7 @@ async function align(options: Options): Promise<void> {
   const words = parseTranscript(await readFile(options.words, "utf8")).words;
   const settings = ALIGN_SETTINGS;
   const { samples, frames, emissions } = (await heardBefore(options)) ?? (await hear(options));
-  const { tokens, owned } = transcriptTokens(words);
+  const { tokens, owned } = transcriptTokens(words, options.language);
   const spans = forcedAlign(emissions, frames, VOCABULARY_SIZE, tokens);
   const aligned = alignedTranscript(
     words,

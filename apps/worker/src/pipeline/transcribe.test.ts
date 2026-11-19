@@ -46,6 +46,7 @@ describe("alignArgs", () => {
         output: "/job/aligned.json",
         threads: 8,
         emissions: "/job/emissions.f32",
+        language: "en",
       },
       "/models/wav2vec2.onnx",
       { ffmpeg: "/bin/ffmpeg" },
@@ -66,11 +67,23 @@ describe("alignArgs", () => {
       "/bin/ffmpeg",
       "--emissions",
       "/job/emissions.f32",
+      "--language",
+      "en",
     ]);
   });
 
   it("puts the aligner's settings in transcribe's fingerprint", () => {
     expect(TRANSCRIBE_SETTINGS.align).toBe(ALIGN_SETTINGS);
+  });
+
+  it("re-runs transcribe when a value that places an unspelled word changes", () => {
+    const of = (settings: object) => fingerprint({ inputs: [], settings, version: 4 });
+    const base = of(TRANSCRIBE_SETTINGS);
+    for (const [key, value] of Object.entries(ALIGN_SETTINGS.unspelled)) {
+      const unspelled = { ...ALIGN_SETTINGS.unspelled, [key]: value + 1 };
+      const changed = { ...TRANSCRIBE_SETTINGS, align: { ...ALIGN_SETTINGS, unspelled } };
+      expect(of(changed), key).not.toBe(base);
+    }
   });
 });
 
@@ -98,7 +111,7 @@ describe("re-listen settings", () => {
 
   it("are part of transcribe's fingerprint: another threshold or model re-runs it", () => {
     expect(TRANSCRIBE_SETTINGS.relisten).toBe(RELISTEN_SETTINGS);
-    const of = (settings: object) => fingerprint({ inputs: [], settings, version: 3 });
+    const of = (settings: object) => fingerprint({ inputs: [], settings, version: 4 });
     const base = of(TRANSCRIBE_SETTINGS);
     for (const [key, value] of Object.entries(RELISTEN_SETTINGS)) {
       const other = typeof value === "number" ? value + 1 : `${value}x`;

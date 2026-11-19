@@ -10,6 +10,8 @@ import {
   forcedAlign,
   logSoftmax,
   normaliseSamples,
+  spokenLetters,
+  spokenTokens,
   transcriptTokens,
   wordTokens,
 } from "./align.ts";
@@ -123,7 +125,7 @@ describe("forcedAlign", () => {
 describe("transcriptTokens and alignedTranscript", () => {
   it("joins words with the separator and times each by its own letters", () => {
     const words = [word(1, "Hi", 0, 9), word(2, "a", 0, 9)];
-    const { tokens, owned } = transcriptTokens(words);
+    const { tokens, owned } = transcriptTokens(words, "en");
     expect(tokens).toEqual([11, 10, 4, 7]);
     expect(owned).toEqual([[0, 1], [3]]);
     const spans = [
@@ -139,10 +141,42 @@ describe("transcriptTokens and alignedTranscript", () => {
     ]);
   });
 
+  it("times a word of digits by its spoken form: first part's start, last part's end", () => {
+    const words = [word(1, "in"), word(2, "2027."), word(3, "How")];
+    const { tokens, owned } = transcriptTokens(words, "en");
+    // IN | TWENTY | TWENTY | SEVEN | HOW
+    const letters = (text: string) => wordTokens(text);
+    expect(tokens).toEqual([
+      ...letters("IN"),
+      4,
+      ...letters("TWENTY"),
+      4,
+      ...letters("TWENTY"),
+      4,
+      ...letters("SEVEN"),
+      4,
+      ...letters("HOW"),
+    ]);
+    // "2027." owns its 17 letters and the two separators inside it.
+    expect(owned).toEqual([[0, 1], Array.from({ length: 19 }, (_, i) => 3 + i), [23, 24, 25]]);
+    // Every token one frame long from frame 50 on, a 5 s silence (250 frames)
+    // between the year's last letter and "How".
+    const spans = tokens.map((_, i) => {
+      const frame = i < 22 ? 50 + i : 300 + i;
+      return { first: frame, last: frame };
+    });
+    const aligned = alignedTranscript(words, owned, spans, FRAME, 10);
+    expect(aligned).toEqual([
+      { id: "w0001", text: "in", start: 1, end: 1.04 },
+      { id: "w0002", text: "2027.", start: 1.06, end: 1.44 },
+      { id: "w0003", text: "How", start: 6.46, end: 6.52 },
+    ]);
+  });
+
   it("shares the gap between placed neighbours among the words it cannot spell", () => {
-    const words = [word(1, "in"), word(2, "2026"), word(3, "%"), word(4, "we")];
-    const { tokens, owned } = transcriptTokens(words);
-    // "IN" | "WE": the digits and the symbol own no token.
+    const words = [word(1, "in"), word(2, "-"), word(3, "..."), word(4, "we")];
+    const { tokens, owned } = transcriptTokens(words, "en");
+    // "IN" | "WE": the dash and the dots own no token.
     expect(tokens).toEqual([10, 9, 4, 18, 5]);
     expect(owned).toEqual([[0, 1], [], [], [3, 4]]);
     const spans = [
@@ -163,7 +197,9 @@ describe("transcriptTokens and alignedTranscript", () => {
 
   it("gives an unspellable first or last word the time from the clip's edge", () => {
     const words = [word(1, "1"), word(2, "go"), word(3, "2")];
-    const { owned } = transcriptTokens(words);
+    // A language without a spoken form: the digits own no token.
+    const { owned } = transcriptTokens(words, "xx");
+    expect(owned).toEqual([[], [0, 1], []]);
     const spans = [
       { first: 25, last: 25 },
       { first: 26, last: 29 },
@@ -179,6 +215,35 @@ describe("transcriptTokens and alignedTranscript", () => {
   it("keeps Whisper's times when no word can be spelled", () => {
     const words = [word(1, "42", 1, 2)];
     expect(alignedTranscript(words, [[]], [], FRAME, 3)).toEqual(words);
+  });
+});
+
+describe("spokenTokens", () => {
+  const spelled = (text: string) => wordTokens(text);
+
+  it("spells digits and symbols by their spoken form, a separator between its parts", () => {
+    const [year, percent, price] = spokenTokens(["2027.", "50%", "$20"], "en");
+    expect(year).toEqual([...spelled("TWENTY"), 4, ...spelled("TWENTY"), 4, ...spelled("SEVEN")]);
+    expect(percent).toEqual([...spelled("FIFTY"), 4, ...spelled("PERCENT")]);
+    expect(price).toEqual([...spelled("TWENTY"), 4, ...spelled("DOLLARS")]);
+  });
+
+  it("spells a word of letters exactly as before, with no separator inside it", () => {
+    expect(spokenTokens(["Don't,", "twenty-seven", "U.S."], "en")).toEqual([
+      spelled("DON'T"),
+      spelled("TWENTYSEVEN"),
+      spelled("US"),
+    ]);
+  });
+
+  it("gives nothing for what is not said, and for digits in a language it cannot read", () => {
+    expect(spokenTokens(["-", "...", "2027"], "en")).toEqual([[], [], expect.any(Array)]);
+    expect(spokenTokens(["2027", "50%", "da"], "xx")).toEqual([[], [], spelled("DA")]);
+  });
+
+  it("counts a word's spoken letters without the separators", () => {
+    expect(spokenLetters(["2027.", "50%", "Hi", "-"], "en")).toEqual([17, 12, 2, 0]);
+    expect(spokenLetters(["2027."], "xx")).toEqual([0]);
   });
 });
 

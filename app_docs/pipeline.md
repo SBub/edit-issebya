@@ -59,14 +59,17 @@ live status shows one line per step (`name: summary`).
   116.7 s) it put "Friction" at 0.08 to 6.00 s (the voice starts at about 5.7 s), and 34 of 162
   words held 0.4 s or more of silence (37.7 s in all). So the step keeps Whisper's words and ids
   and takes every time from the aligner below (version 2; version 1 kept HyperFrames' times).
-  Version 3 adds the re-listen, further down. The step's calls, in order: Whisper `small` on the
-  whole clip, the aligner, ffmpeg for the envelope, then per spot one ffmpeg cut and Whisper
-  `medium`, and the aligner once more when the words changed. Ids are given last, by position
+  Version 3 adds the re-listen, further down. Version 4 has the aligner spell digits and symbols
+  by their spoken form and narrows a word it still cannot spell to its sound (both below). The
+  step's calls, in order: Whisper `small` on the whole clip, ffmpeg for the envelope, the aligner,
+  then per spot one ffmpeg cut and Whisper `medium`, and the aligner once more when the words
+  changed. Ids are given last, by position
   (`numberWords`), to the list the step writes.
 - The word aligner (`align.ts`, `align-entry.ts`, `align-model.ts`), a second tool call of
   `transcribe`: the worker's Node runs `align-entry --input <converted.mp4> --words <heard.json>
---output <aligned.json> --threads <n> --model <onnx> --ffmpeg <path> --emissions <file>`
-  (`alignArgs`). It checks the
+--output <aligned.json> --threads <n> --model <onnx> --ffmpeg <path> --emissions <file>
+--language <code>`
+  (`alignArgs`; the language is transcribe's `language` setting). It checks the
   model against its pin, has ffmpeg decode the audio to 16 kHz mono floats (`alignDecodeArgs`), and
   runs wav2vec2-base-960h (an English CTC model that spells capitals, the apostrophe and a word
   separator) through `onnxruntime-node` on the CPU in pieces of 20 s with 1 s of audio heard but
@@ -74,22 +77,60 @@ live status shows one line per step (`name: summary`).
   was trained), one frame of letter probabilities per 20 ms. Then a CTC forced alignment
   (`forcedAlign`: the Viterbi path through blank, letter, blank, ... in order over the whole clip)
   places Whisper's words, spelled in the model's letters with the separator between them
-  (`wordTokens`, `transcriptTokens`; accents dropped, punctuation and anything else the model cannot
-  spell left out). A word lasts from its first letter's first frame to the end of its last letter's
-  last frame (`alignedTranscript`). No rule of ours moves a time. The fallback, for a word with no
-  letter the model spells (digits such as "2026", a symbol): such words take the gap between the
-  placed words around them, split evenly in order (from the clip's start or to its end at the
-  edges), so they are never cut; a transcript with no spellable word at all keeps Whisper's times.
-  One `@hf-progress` line per piece. `ALIGN_SETTINGS` (the model and its SHA-256, the rate, the
-  frame step, the receptive field, the piece and context lengths, `provider` `cpu`) is the `align`
-  setting of transcribe, so another model re-runs it. The thread count (the machine's CPUs) is not
-  a setting. On the dfba reel it took about 8.5 s (1.5 GB peak); 0 of 162 words now hold even
-  0.2 s of silence, 0 start 0.2 s or more before their sound, 0 end 0.2 s or more into silence, and
-  "Friction" is 5.66 to 6.06 s. The entry saves the model's letter probabilities (after the
-  log-softmax) with the clip's sample count to `--emissions` (`packEmissions`); when that file is
-  already there it reads them (`unpackEmissions`) and runs neither ffmpeg nor the model. That is
-  how the re-listen's second alignment costs about a second instead of the model's run again.
-  The step deletes the file before its first alignment, so a file from an earlier try is never read.
+  (`wordTokens`, `spokenTokens`, `transcriptTokens`; accents dropped, punctuation and anything else
+  the model cannot spell left out). A word lasts from its first letter's first frame to the end of
+  its last letter's last frame (`alignedTranscript`). No rule of ours moves a time.
+  One `@hf-progress` line per piece.
+  - The spoken form (`spoken-form.ts`, `spokenParts`; pure, English). The model spells letters
+    only, so a word of digits or symbols is spelled for it the way it is said, and several aligner
+    words map back to the one stored word: it starts with its first spoken part and ends with its
+    last (`transcriptTokens` gives the word all of those tokens). "2027." is TWENTY|TWENTY|SEVEN.
+    The readings: a year for four bare digits from 1100 to 2099 ("2027" twenty twenty seven,
+    "2000" two thousand, "2005" two thousand five, "1905" nineteen oh five, "1900" nineteen
+    hundred), decades ("1990s", "80s"), counts ("42", "1,250,000"; a leading zero or more than 15
+    digits digit by digit), decimals ("3.5" three point five), ordinals ("1st", "21st"), percent
+    ("50%" fifty percent), money ("$20" twenty dollars, "$1" one dollar, "$3.50" three dollars
+    fifty, "€20", "£5", "20€"; before a magnitude word the unit moves after it: "$3.5 million" is
+    three point five, million dollars), "&" and, "+" plus, "@" at, "=" equals, "°" degrees, "#1"
+    number one, times ("9:30" nine thirty, "9:05" nine oh five, "9:00" nine), a slash as its
+    numbers ("24/7" twenty four seven; "1/2", "1/3", "2/3", "1/4", "3/4" as fractions), a dash
+    between numbers as "to". Where a writing has several readings the most common one is taken:
+    the forced alignment scores every letter against the sound, so a small misreading moves a time
+    by little. A word of letters is spelled exactly as before. The spoken form is read by the
+    aligner and by the re-listen's letter count only: the stored word, the captions and every
+    other shown text keep what Whisper wrote ("2027", "50%", "$20"). For another language
+    (`language` other than `en`) there is no reading and every word is spelled as written.
+    On the owner's reel 3bb61f07 (the real model on its retimed copy): "2027." went from 3.46 to
+    8.70 s (the 5.2 s pause inside it) to 2.56 to 3.46 s, on the spoken year, and "media", which
+    version 3 stretched over the year (2.00 to 3.04 s), is 2.02 to 2.30 s.
+  - The fallback, for a word with no letter the model spells even in its spoken form (a lone
+    dash, digits in a language without a reading). `alignedTranscript` gives such words the space
+    between the placed words around them, split evenly in order (from the clip's start or to its
+    end at the edges). A word must never keep that whole space: a pause in it would sit inside a
+    word's span, where retime never cuts (version 3 did this to "2027." on reel 3bb61f07: 12.20
+    to 17.96 s, with 5.5 s of room noise at about -50 dB, which stayed in the edit). So
+    `transcribe.ts` narrows it on the 10 ms envelope after every alignment (`placeUnspelled`,
+    `unspelled.ts`, pure): the frames in the space within `belowSpeechDb` (10 dB) of the clip's
+    speech level (measured on the spelled words only) are grouped over breaks of up to
+    `bridgeSeconds` (0.25 s); the word starts at the first frame of the group with the most such
+    frames and ends at its last frame plus `marginSeconds` (0.05 s), never past the space. A
+    smaller burst further away (a click, the first frames of the next word) is left out. A space
+    with no frame at speech level gives the word `nominalSeconds` (0.1 s) at the space's start.
+    Neighbouring unspelled words split the sound, or the nominal spans, evenly in order. The rest
+    of the space is an ordinary gap of the transcript, which retime cuts like any other. A spelled
+    word is never moved, and a transcript with no spellable word at all keeps Whisper's times.
+    The four values are `ALIGN_SETTINGS.unspelled`. On the stored version 3 transcript of that
+    reel, read without the spoken form, "2027." becomes 12.20 to 12.49 s and retime keeps 0.28 s
+    of the pause (22.5 s of the clip come out 8.07 s long instead of 12.97 s). `ALIGN_SETTINGS` (the model and its SHA-256, the rate, the
+    frame step, the receptive field, the piece and context lengths, `provider` `cpu`) is the `align`
+    setting of transcribe, so another model re-runs it. The thread count (the machine's CPUs) is not
+    a setting. On the dfba reel it took about 8.5 s (1.5 GB peak); 0 of 162 words now hold even
+    0.2 s of silence, 0 start 0.2 s or more before their sound, 0 end 0.2 s or more into silence, and
+    "Friction" is 5.66 to 6.06 s. The entry saves the model's letter probabilities (after the
+    log-softmax) with the clip's sample count to `--emissions` (`packEmissions`); when that file is
+    already there it reads them (`unpackEmissions`) and runs neither ffmpeg nor the model. That is
+    how the re-listen's second alignment costs about a second instead of the model's run again.
+    The step deletes the file before its first alignment, so a file from an earlier try is never read.
 - The re-listen (`relisten.ts`, pure; run by `transcribe.ts`). Whisper `small` sometimes drops
   words: on the owner's reel b2170604 it wrote "together? And hugs" where she says "together? Warm
   meals made from local produce. And hugs", and the aligner stretched "And" over 1.2 s. The step
@@ -100,7 +141,9 @@ live status shows one line per step (`name: summary`).
      least `gapSeconds` (0.45 s) of envelope frames in a row within `gapBelowSpeechDb` (10 dB) of
      the clip's speech level. It is retime's `missedSpeech` (`speech-gaps.ts`) with a longer
      length, so every gap spot is also a possible missed word retime would keep. A stretched word
-     (`stretchedWords`): its seconds per letter (the aligner's letters, `wordTokens`) are at least
+     (`stretchedWords`): its seconds per letter (the aligner's letters of its spoken form,
+     `spokenLetters`: "2027." counts the 17 letters of "twenty twenty seven", so a long number can
+     be a spot; a word with no letter even then is skipped) are at least
      `stretchRatio` (3) times the clip's median, and it is at least `stretchExtraSeconds` (0.4 s)
      longer than the median would make it. Candidates closer than `joinSeconds` (1 s) are one spot.
   2. The window (`relistenWindow`, `windowArgs`): the old words that touch the spot and
@@ -160,7 +203,7 @@ workspace @edit-issebya/worker models:fetch`, so HyperFrames never downloads 1.5
   it was built from (`inputs`: retime's `transcript.json` and `source.mp4`, the head track, each
   by step and fingerprint, written once by `first_version` and copied by every later version).
   The preview, restore, the font pair relayout, the owner's edits and Start over all read those
-  stored outputs, which are `kept`, so a reel made before version 3 keeps its old transcript and
+  stored outputs, which are `kept`, so a reel made before the current version keeps its old transcript and
   its old word ids for good and its versions load as before: no job pairs an old version's word
   ids with a new transcript. Two things do change for such a reel. An export first runs the
   current pipeline (`runRender`), which now makes new outputs the old version does not use (once,
@@ -540,8 +583,9 @@ fingerprint. Tags are not part of a fingerprint.
 8. The final re-check (`pausesLeft`) names, in the step line, what is still longer than
    `maxPauseSeconds` plus a frame on the retimed timeline: a pause of the transcript the plan
    could not shorten, and a stretch inside the words' spans with no frame at speech level (rule
-   1's level), which retime never cuts: it shows where a word's span still holds a pause (a word
-   the aligner could not spell takes the whole gap around it). The step line also names every
+   1's level), which retime never cuts: it shows where a word's span still holds a pause (a
+   transcript made before transcribe version 4 gave a word the aligner could not spell the whole
+   space around it). The step line also names every
    possible missed word kept (rule 1) with its retimed time, so the owner can listen to it.
 
 `RETIME_PRESET` defaults: `baseSpeed` 1.05, `slowSpeed` 1.1, `slowWordsPerSecond` 2.7,
@@ -646,11 +690,19 @@ inputs name the old retime outputs) does not re-run retime.
   (audio and video of every planned piece trimmed at the same frame, a fade out and a fade in at
   every join, no piece's length changed by them), `align.test.ts` (the model's spelling of a
   word, the normalised input, the pieces tiling the clip's frames, the forced alignment on
-  synthetic emissions, the times of each word and the fallback for words it cannot spell, the
-  decode arguments), `align-model.test.ts` (the pin, the fetch command when the file is missing,
+  synthetic emissions, the times of each word, a word of digits owning every token of its spoken
+  form and timed from its first part to its last, the space shared by words it cannot spell, the
+  decode arguments), `spoken-form.test.ts` (every reading: years, decades, counts, separators,
+  decimals, ordinals, percent, money and the unit after a magnitude word, the symbols, times,
+  slashes, fractions, ranges; a word of letters and another language left as written),
+  `unspelled.test.ts` (an unspelled word narrowed to the sound in its space, the margin, a short
+  break joined, a far burst left out, the nominal span without sound, neighbours splitting one
+  sound, the clip's edges, a spelled word never moved; and the first 22.5 s of the owner's reel
+  3bb61f07 from `testdata/year-pause/`: "2027." from 12.20 to 17.96 s to a short span, and the
+  5.5 s pause cut to 0.3 s by the retime planner, by the fallback alone and by the spoken form), `align-model.test.ts` (the pin, the fetch command when the file is missing,
   the notice), `transcribe.test.ts` (the aligner's arguments, its settings and every re-listen setting in the
-  fingerprint, the `medium` call), `relisten.test.ts` (the gap rule, the stretched word rule, the
-  joining, the window's bounds, the merge between anchors, no anchor and a false alarm changing
+  fingerprint, the `medium` call), `relisten.test.ts` (the gap rule, the stretched word rule, a number measured by its
+  spoken letters, the joining, the window's bounds, the merge between anchors, no anchor and a false alarm changing
   nothing, an old word outside the spot kept, the writing at the join, the ids, the step line), `head-track-step.test.ts` (the sample, count, chunk, join
   and decode calls, the chunks' weighted progress, a failed chunk), `u2net.test.ts` (the model's
   input and mask, the chunks and their threads, the decode and encode arguments),
@@ -711,6 +763,12 @@ inputs name the old retime outputs) does not re-run retime.
   picture stays frame-exact and the sound stays in step with it.
 - Transcribe takes Whisper's words and the aligner's times only. Never add a rule of our own that
   moves a word time; a word the model cannot spell gets the documented fallback, nothing else.
+- The spoken form of a word is for the aligner's times only. Never store it, show it, or send it
+  anywhere: the transcript, the captions and every other shown text keep exactly what Whisper
+  wrote ("2027", "50%", "$20", "3.5", "1st", "24/7").
+- Never give a word the aligner cannot spell the whole space between its neighbours: it is
+  narrowed to the sound in that space, or to the nominal span when there is none, so a pause never
+  hides inside a word's span. This is not a cut inside a word: retime's rule above stays.
 - The re-listen never changes a word outside the two anchors of a spot, never changes anything
   without an anchor on both sides, and never writes a word no Whisper model heard: the only text
   of our own is the full stop and the capital of the join rules. Never loosen the merge to take a
