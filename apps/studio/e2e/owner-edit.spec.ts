@@ -22,7 +22,7 @@ import { claimableJobIds, runWorkerOnce } from "../test-support/worker.ts";
 const CACHE_PREFIX = `e2e-${crypto.randomUUID()}/`;
 // The frame the builder lays out in, and the safe zone's left edge in it.
 const FRAME_WIDTH = 1080;
-const SAFE_LEFT = 35;
+const SAFE_LEFT = 70;
 // Set to a folder to keep screenshots of the editor (never in CI).
 const SHOTS = process.env.OWNER_EDIT_SHOTS;
 
@@ -539,7 +539,11 @@ test("a dragged text's centre snaps to the frame's centre lines, with a thin gui
   await ready();
   // The page draws it centred (whole pixels), inside the safe zone.
   const at = await drawn("hook");
-  expect(Math.abs(at.x + at.width / 2 - 540)).toBeLessThan(1);
+  // A hook this wide, centred at 960 down, would reach into the right rail's
+  // notch (x 880 and more from y 833), so the page keeps it a few pixels left
+  // of the line, at the notch's edge.
+  expect(at.x + at.width).toBeLessThanOrEqual(882);
+  expect(Math.abs(at.x + at.width / 2 - 540)).toBeLessThan(5);
   expect(Math.abs(at.y + at.height / 2 - 960)).toBeLessThan(1);
 
   // Far from both lines: no guide.

@@ -211,7 +211,7 @@ describe("the owner's work carried into another font pair", () => {
     for (let next = size; next <= 400; next += 10) {
       const moved = applyOwnerMoves(
         hook.edit,
-        [{ id: "hook", x: 40, y: was.y, size: next }],
+        [{ id: "hook", x: 70, y: was.y, size: next }],
         context,
       );
       if (!moved.ok) break;

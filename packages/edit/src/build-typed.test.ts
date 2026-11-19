@@ -46,9 +46,9 @@ describe("the typed hook on the page", () => {
   it("keeps the hook's place, size, colour, font and centred lines", async () => {
     const { html } = await page(long);
     const stored = long.edit.tracks.overlays.find((item) => item.kind === "hook")!;
-    expect(stored.position).toEqual({ x: 135, y: 220, align: "left" });
+    expect(stored.position).toEqual({ x: 70, y: 1057, align: "left" });
     expect(lineOf(html, '<span id="hook"')).toMatch(
-      /^<span id="hook" class="text hook f-artistic" style="left: 135px; top: 220px; font-size: 110px; color: #FFFFFF">/,
+      /^<span id="hook" class="text hook f-artistic" style="left: 70px; top: 1057px; font-size: 110px; color: #FFFFFF">/,
     );
     expect(html).toContain("      .hook { text-align: center; }");
   });
@@ -86,7 +86,7 @@ describe("the typed hook on the page", () => {
         "",
       ),
     ).toBe(
-      '<span id="hook" class="text hook f-artistic" style="left: 135px; top: 220px; font-size: 110px; color: #FFFFFF">Gen Z won&#39;twork like you did',
+      '<span id="hook" class="text hook f-artistic" style="left: 70px; top: 1057px; font-size: 110px; color: #FFFFFF">Gen Z won&#39;twork like you did',
     );
   });
 

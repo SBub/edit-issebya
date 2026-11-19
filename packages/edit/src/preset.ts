@@ -140,26 +140,27 @@ export function intersectBox(a: Box, b: Box): Box {
   };
 }
 
-// Where TikTok and Instagram Reels leave text visible at 1080x1920 (owner
-// decision 2026-11-03, from a TikTok and Instagram safe-zone reference,
-// replacing issue #114's 120, 840, 252, 1164): 220 px covered at the top,
-// 35 px at each side and 450 px at the bottom. A guard, not a taste value: no
-// preset and no change request moves it.
-export const PLATFORM_SAFE: Box = { left: 35, right: 1045, top: 220, bottom: 1470 };
+// Where the platforms leave text visible at 1080x1920 (owner decision
+// 2026-11-19, measured from iPhone screenshots of TikTok's full screen player,
+// replacing the 2026-11-03 values 35, 1045, 220, 1470 from a safe-zone
+// reference). On a phone taller than 9:16 that player scales the video to the
+// height above its black bottom panel (0.941) and crops the sides, so the
+// visible video is x 50 to 1030. Its top bar (status bar, back arrow and the
+// "Find related content" search box) covers y 0 to 247, and its right rail
+// (avatar, like, comment, save, more, music disc) covers x 900 to 1011, y 853
+// to 1748. Each edge keeps a margin of about 20 px from what is measured. The
+// bottom stays at 1470: the username and caption block (from y 1645), the
+// promo bar and the panel are all below it, and Instagram Reels covers about
+// the same. A guard, not a taste value: no preset and no change request moves it.
+export const PLATFORM_SAFE: Box = { left: 70, right: 1010, top: 270, bottom: 1470 };
 
-// The platforms' button column (like, comment, share) on the right: from its
-// top (1164) down to the bottom zone it covers a further 100 px inside
-// `PLATFORM_SAFE`, so text below that line stays left of x 945. The reference
-// drawing does not label the column's top: 1164 is measured from it (TikTok's
-// older reference agrees). Both are starting values the owner tunes by eye
-// with the studio's Zones button.
-const PLATFORM_BUTTONS_TOP = 1164;
-const PLATFORM_BUTTONS_WIDTH = 100;
-
-// The notch the button column cuts out of `PLATFORM_SAFE`'s lower-right
-// corner; text inside `PLATFORM_SAFE` never overlaps it.
+// The notch the right rail cuts out of `PLATFORM_SAFE`: the rail's column
+// (x 900) less the margin, from the avatar's top (853) less the margin, down to
+// the bottom of the safe zone; text inside `PLATFORM_SAFE` never overlaps it.
+const PLATFORM_BUTTONS_LEFT = 880;
+const PLATFORM_BUTTONS_TOP = 833;
 export const PLATFORM_BUTTONS: Box = {
-  left: PLATFORM_SAFE.right - PLATFORM_BUTTONS_WIDTH,
+  left: PLATFORM_BUTTONS_LEFT,
   right: PLATFORM_SAFE.right,
   top: PLATFORM_BUTTONS_TOP,
   bottom: PLATFORM_SAFE.bottom,

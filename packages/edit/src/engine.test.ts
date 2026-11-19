@@ -63,6 +63,9 @@ function steadyHead(sample: { head_top: number; cx: number; head_w: number }): H
 // The large, centred face of the reel the decide failures were on (face box
 // x 434 to 726, y 452 to 846).
 const BIG_FACE = steadyHead({ head_top: 452, cx: 580, head_w: 292 });
+// A face low enough to leave room for a two-line text at 110 px above it, under
+// S's top at 270 (the room above a face is its top less the gap less 270).
+const LOW_FACE = steadyHead({ head_top: 520, cx: 580, head_w: 292 });
 
 function withPlaceholderMasks(edit: Edit, spoken: Transcript): Edit {
   const masks = maskSpans(edit, spoken, ISSEBYA_PRESET).map((span, index) => ({
@@ -842,7 +845,7 @@ describe("the layout engine's placement", () => {
     // Two lines at full size fit the safe zone's width, so it keeps 110 px.
     const { edit, record, checks } = await place(
       { accents: [{ from: "w63", to: "w67" }] },
-      { headTrack: BIG_FACE },
+      { headTrack: LOW_FACE },
     );
     const accent = edit.tracks.overlays[0]!;
     expect(accent.id).toBe("accent-1");
@@ -1005,27 +1008,24 @@ describe("visuals: corner cards over the footage", () => {
   it("takes the full card where a corner or side holds it, and shrinks from it in 10% steps where none does", async () => {
     // The large centred face: the bottom-left corner holds the full card.
     const roomy = await place({ visuals: [{ from: "w84", to: "w99" }] }, { headTrack: BIG_FACE });
-    expect(cardsOf(roomy.edit)[0]!.box).toEqual({ x: 75, y: 971, ...FULL });
+    expect(cardsOf(roomy.edit)[0]!.box).toEqual({ x: 110, y: 971, ...FULL });
     expect(roomy.record.filter((note) => note.item === "visual-1")).toEqual([
       expect.objectContaining({ outcome: "placed", zone: "corner", size: 360, cost: 0 }),
     ]);
-    // The speech-ten head: no corner holds the full card off the face, the
-    // strip beside it does: one zone step (10) beats two shrink steps (20),
-    // and the card sits at the face's padded edge, full size, noted `moved`.
+    // The speech-ten head: no corner holds the full card off the face, and the
+    // strip beside it (S's left edge 70 to the face's padded edge, 327 px) does
+    // not either: the card shrinks to 307 by 392 in the bottom-left corner (two
+    // steps, 20).
     const tight = await place({ visuals: [{ from: "w84", to: "w99" }] }, { headTrack: SPEECH_TEN });
-    expect(cardsOf(tight.edit)[0]!.box).toEqual({ x: 37, y: 658, ...FULL });
+    expect(cardsOf(tight.edit)[0]!.box).toEqual({ x: 110, y: 1038, width: 307, height: 392 });
     expect(tight.record.filter((note) => note.item === "visual-1")).toEqual([
       expect.objectContaining({
-        outcome: "moved",
-        rule: "zone",
-        zone: "beside-face",
-        size: 360,
-        cost: 10,
-        // The corner zone's inset box reaches the button column too.
+        outcome: "shrunk",
+        rule: "size",
+        zone: "corner",
+        size: 307,
+        cost: 20,
         blockers: [{ kind: "face" }, { kind: "buttons" }],
-        reason: expect.stringMatching(
-          /^visual visual-1 moves beside the face from .+ to .+; the face, the buttons took a corner$/,
-        ),
       }),
     ]);
     expect(tight.checks).toEqual([]);
@@ -1033,7 +1033,7 @@ describe("visuals: corner cards over the footage", () => {
     // holds 378 px of height, so the card shrinks to 296 by 377 (two steps, 20),
     // cheaper than the strip beside the face (a zone step and two shrink steps).
     const low = await place({ visuals: [{ from: "w84", to: "w99" }] });
-    expect(cardsOf(low.edit)[0]!.box).toEqual({ x: 75, y: 1053, width: 296, height: 377 });
+    expect(cardsOf(low.edit)[0]!.box).toEqual({ x: 110, y: 1053, width: 296, height: 377 });
     expect(low.record.filter((note) => note.item === "visual-1")).toEqual([
       expect.objectContaining({
         outcome: "shrunk",
@@ -1050,20 +1050,48 @@ describe("visuals: corner cards over the footage", () => {
     expect(low.checks).toEqual([]);
   });
 
+  it("keeps every engine-placed card inside the safe zone and off the right rail's notch, for any head", async () => {
+    const { box: safe, notch } = SAFE_ZONE;
+    const heads = [
+      hand.headTrack,
+      BIG_FACE,
+      SPEECH_TEN,
+      LOW_FACE,
+      steadyHead({ head_top: 100, cx: 540, head_w: 1000 }),
+      steadyHead({ head_top: 300, cx: 900, head_w: 300 }),
+    ];
+    let seen = 0;
+    for (const headTrack of heads) {
+      const placed = await place({ visuals: [{ from: "w84", to: "w99" }] }, { headTrack });
+      seen += cardsOf(placed.edit).length;
+      for (const card of cardsOf(placed.edit)) {
+        const { x, y, width, height } = card.box!;
+        expect(x, card.id).toBeGreaterThanOrEqual(safe.left);
+        expect(x + width, card.id).toBeLessThanOrEqual(safe.right);
+        expect(y, card.id).toBeGreaterThanOrEqual(safe.top);
+        expect(y + height, card.id).toBeLessThanOrEqual(safe.bottom);
+        const intoNotch =
+          x < notch.right && notch.left < x + width && y < notch.bottom && notch.top < y + height;
+        expect(intoNotch, card.id).toBe(false);
+      }
+    }
+    expect(seen).toBeGreaterThan(3);
+  });
+
   it("covers the face with a card only when nothing off it holds one, noted covers-face", async () => {
     const covers = (record: { outcome: string }[]) =>
       record.filter((note) => note.outcome === "covers-face");
     // A corner or side is free at the full size: no cover, no note.
     const roomy = await place({ visuals: [{ from: "w84", to: "w99" }] }, { headTrack: BIG_FACE });
     expect(covers(roomy.record)).toEqual([]);
-    // The strip beside the face holds it: still not over the face.
+    // The shrunk card in a corner is still not over the face.
     const tight = await place({ visuals: [{ from: "w84", to: "w99" }] }, { headTrack: SPEECH_TEN });
     expect(covers(tight.record)).toEqual([]);
     // A face filling the safe zone leaves no spot off it at 30 px or more: the
     // card covers it (the face cost, 100) at its first corner, full size.
     const huge = steadyHead({ head_top: 100, cx: 540, head_w: 1000 });
     const covered = await place({ visuals: [{ from: "w84", to: "w99" }] }, { headTrack: huge });
-    expect(cardsOf(covered.edit)[0]!.box).toEqual({ x: 75, y: 260, ...FULL });
+    expect(cardsOf(covered.edit)[0]!.box).toEqual({ x: 110, y: 310, ...FULL });
     expect(covered.record.filter((note) => note.item === "visual-1")).toEqual([
       expect.objectContaining({
         outcome: "covers-face",
@@ -1708,7 +1736,7 @@ describe("the written hook", () => {
   const preset110 = STYLES.accent.base;
 
   it("shows from 0.2 s to 3 s in the upper part of the frame, off the face, inside the safe zone", async () => {
-    const placed = await place({ hook: HOOK });
+    const placed = await place({ hook: HOOK }, { headTrack: LOW_FACE });
     const item = hookOf(placed.edit)!;
     expect(item).toMatchObject({ id: "hook", kind: "hook", text: HOOK.text });
     expect(item.words).toBeUndefined();
@@ -1730,13 +1758,16 @@ describe("the written hook", () => {
   });
 
   it("runs its whole window whatever is said in it: an accent said then is placed around it, both full", async () => {
-    const placed = await place({
-      hook: HOOK,
-      accents: [
-        { from: "w9", to: "w9" },
-        { from: "w12", to: "w12" },
-      ],
-    });
+    const placed = await place(
+      {
+        hook: HOOK,
+        accents: [
+          { from: "w9", to: "w9" },
+          { from: "w12", to: "w12" },
+        ],
+      },
+      { headTrack: LOW_FACE },
+    );
     expect(placed.edit.tracks.overlays.map((item) => item.id)).toEqual([
       "hook",
       "accent-1",
@@ -1892,9 +1923,9 @@ describe("the written hook", () => {
   });
 
   it("never sets the hook under the placer's 30 px: a very long word shrinks to it, a long sentence wraps at the base", async () => {
-    // One 68-letter word fits the safe zone's width only at 30 px, on one line.
+    // One 64-letter word fits the safe zone's width only at 30 px, on one line.
     const long = await place(
-      { hook: { text: "Pneumonoultramicroscopicsilicovolcanoconiosisxxxxxxxxxxxxxxxxxxxxxxx" } },
+      { hook: { text: "Pneumonoultramicroscopicsilicovolcanoconiosisxxxxxxxxxxxxxxxxxxx" } },
       { headTrack: NARROW_HEAD },
     );
     const word = hookOf(long.edit)!;
@@ -1904,7 +1935,7 @@ describe("the written hook", () => {
       "shrunk",
     ]);
     expect(parseEdit(long.edit, ISSEBYA_PRESET, transcript).ok).toBe(true);
-    // Twenty words wrap freely at the base size (five lines) instead of shrinking.
+    // Twenty words wrap freely at the base size (seven lines) instead of shrinking.
     const sentence = await place(
       {
         hook: {
@@ -1915,7 +1946,7 @@ describe("the written hook", () => {
     );
     const lines = hookOf(sentence.edit)!;
     expect(lines.size).toBe(preset110);
-    expect(lines.breaks!.length).toBe(4);
+    expect(lines.breaks!.length).toBe(6);
     expect(sentence.checks).toEqual([]);
   });
 
@@ -1998,10 +2029,13 @@ describe("text picks share the screen in time", () => {
     // The big word "completely" (w28) comes in during "has" (w27), the list's
     // last word: the list is not cut, so "has" stays in its levels and out of
     // the captions.
-    const placed = await place({
-      lists: [{ items: [{ from: "w22", to: "w27", key_from: "w24" }] }],
-      big_words: [{ from: "w28", to: "w28" }],
-    });
+    const placed = await place(
+      {
+        lists: [{ items: [{ from: "w22", to: "w27", key_from: "w24" }] }],
+        big_words: [{ from: "w28", to: "w28" }],
+      },
+      { headTrack: LOW_FACE },
+    );
     expect(placed.spans.get("transition-1")).toMatchObject({
       start: ms(start("w22") - ENTRANCE),
       end: listEnd(placed.spans, "transition-1", "w27"),
@@ -2097,9 +2131,10 @@ describe("text picks share the screen in time", () => {
   it("wraps a key phrase wider than the safe zone instead of overflowing it", async () => {
     // "protected mental health and sense of purpose we have" is about 2800 px
     // at 110 px: three balanced lines at the base size inside S.
-    const placed = await place({
-      lists: [{ items: [{ from: "w106", to: "w114", key_from: "w106" }] }],
-    });
+    const placed = await place(
+      { lists: [{ items: [{ from: "w106", to: "w114", key_from: "w106" }] }] },
+      { headTrack: LOW_FACE },
+    );
     const { box: safe } = SAFE_ZONE;
     const key = placed.edit.tracks.transitions[0]!.levels!.key;
     expect(key.text).toBe("protected mental health and sense of purpose we have");
@@ -2437,7 +2472,15 @@ describe("nothing the answer picks is dropped", () => {
         lists: [{ items: [{ from: "w4", to: "w4", key_from: "w4" }] }],
         hook: { text: "Hello there" },
       },
-      { current: oneSecondReel(), transcript: ONE_SECOND },
+      {
+        current: oneSecondReel(),
+        transcript: ONE_SECOND,
+        // The reel's head 80 px higher: with S's top at 270 the upper third holds
+        // the hook and the list down to the head's 30% line.
+        headTrack: hand.headTrack.map((sample) =>
+          sample ? { ...sample, head_top: sample.head_top - 80 } : sample,
+        ),
+      },
     );
     expect(edit.tracks.overlays.map((item) => item.id)).toEqual(["hook", "accent-1"]);
     expect(edit.tracks.transitions.map((item) => item.id)).toEqual(["transition-1"]);
@@ -2725,10 +2768,13 @@ describe("texts never overlap on screen while a free spot exists", () => {
     // The accent starts 0.08 s into the hook's window: the hook, placed first,
     // takes the upper third, and the accent moves down its zones off it; both
     // keep their spans.
-    const placed = await place({
-      hook: { text: "Gen Z won't work like you did" },
-      accents: [{ from: "w0", to: "w1" }],
-    });
+    const placed = await place(
+      {
+        hook: { text: "Gen Z won't work like you did" },
+        accents: [{ from: "w0", to: "w1" }],
+      },
+      { headTrack: LOW_FACE },
+    );
     expect(placed.spans.get("hook")).toMatchObject({ start: 0.2, end: 3 });
     expect(placed.spans.get("accent-1")).toMatchObject({ start: start("w0"), end: end("w1") });
     expect(
@@ -2853,8 +2899,11 @@ describe("captions through the placer, as sentence blocks", () => {
       ...new Set(placed.edit.tracks.captions.slice(0, 12).map((c) => c.position?.y)),
     ].filter((y): y is number => y !== undefined);
     const steps = ys.slice(1).map((y, index) => y - ys[index]!);
+    // The first sentence's one size (S is 940 px wide, so it may sit under the base).
+    const size = placed.edit.tracks.captions[0]!.size!;
+    expect(size).toBeLessThanOrEqual(CAPTION_BASE);
     for (const step of steps) {
-      expect(step % (CAPTION_BASE + ISSEBYA_PRESET.caption.lineGap)).toBe(0);
+      expect(step % (size + ISSEBYA_PRESET.caption.lineGap)).toBe(0);
     }
   });
 

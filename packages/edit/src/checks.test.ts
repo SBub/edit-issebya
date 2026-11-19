@@ -37,7 +37,7 @@ describe("runChecks", () => {
     expect(checks).toHaveLength(1);
     expect(checks[0]).toMatchObject({ rule: "safe-box", item: "accent-1" });
     expect(checks[0]!.reason).toMatch(
-      /^accent accent-1 \("a{40}"\) runs past the safe box: right edge \d+ > 1045$/,
+      /^accent accent-1 \("a{40}"\) runs past the safe box: right edge \d+ > 1010$/,
     );
   });
 
@@ -46,7 +46,7 @@ describe("runChecks", () => {
     edit.tracks.captions[0]!.position = { x: 540, y: 1440, align: "center" };
     const checks = (await checksOf(edit)).filter((check) => check.rule === "safe-box");
     expect(checks.map((check) => check.item)).toEqual(["cw0"]);
-    expect(checks[0]!.reason).toMatch(/runs past the safe box: bottom edge 1490 > 1470$/);
+    expect(checks[0]!.reason).toMatch(/runs past the safe box: bottom edge 1487 > 1470$/);
   });
 
   async function safeBoxAt(position: { x: number; y: number; align: "right" }) {
@@ -75,17 +75,23 @@ describe("runChecks", () => {
       await nodeMeasurer(),
     );
     const cw0 = checks.find((check) => check.rule === "safe-box" && check.item === "cw0");
-    expect(cw0?.reason).toMatch(/runs past the safe box: bottom edge 1500 > 1470$/);
+    expect(cw0?.reason).toMatch(/runs past the safe box: bottom edge 1497 > 1470$/);
   });
 
   it("fails safe-box for text in the button column's notch, passes it higher up", async () => {
     // Right-aligned to the guard's right edge: inside the outer box either way.
-    const low = await safeBoxAt({ x: 1040, y: PLATFORM_BUTTONS.top + 40, align: "right" });
+    const low = await safeBoxAt({
+      x: PLATFORM_SAFE.right,
+      y: PLATFORM_BUTTONS.top + 40,
+      align: "right",
+    });
     expect(low).toHaveLength(1);
     expect(low[0]!.reason).toMatch(
-      /runs into the platform button column below y 1164: right edge 1040 > 945$/,
+      /runs into the platform button column below y 833: right edge 1010 > 880$/,
     );
-    expect(await safeBoxAt({ x: 1040, y: PLATFORM_BUTTONS.top - 100, align: "right" })).toEqual([]);
+    expect(
+      await safeBoxAt({ x: PLATFORM_SAFE.right, y: PLATFORM_BUTTONS.top - 100, align: "right" }),
+    ).toEqual([]);
   });
 
   it("fails face for a caption set over the head", async () => {
@@ -172,7 +178,7 @@ describe("runChecks on big words behind the speaker", () => {
     const word = edit.tracks.behind!.find((item) => item.kind === "word")!;
     // On the captions' line (behind the body too), and a word said only after
     // it shows.
-    if (word.kind === "word") Object.assign(word, { position: { x: 42, y: 1000 }, text: "work" });
+    if (word.kind === "word") Object.assign(word, { position: { x: 72, y: 1000 }, text: "work" });
     const { checks } = build(
       edit,
       hand.transcript,

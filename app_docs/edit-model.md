@@ -133,16 +133,30 @@ and rule 6 (`engine-place.ts`).
 - Frame 1080x1920. The one safe zone `S` (`SAFE_ZONE` in `src/engine-zones.ts`, `box` and `notch`)
   is `PLATFORM_SAFE` minus the `PLATFORM_BUTTONS` notch: text never leaves `box` and never overlaps
   `notch`. The preset holds no safe box of its own.
-- `PLATFORM_SAFE` (left 35, right 1045, top 220, bottom 1470) and `PLATFORM_BUTTONS` (left 945,
-  right 1045, top 1164, bottom 1470): where TikTok and Instagram Reels leave text visible at
-  1080x1920 (owner decision 2026-11-03 from a TikTok and Instagram safe-zone reference, replacing
-  issue #114's 120, 840, 252, 1164). The platforms cover 220 px at the top, 35 px at each side and
-  450 px at the bottom, and the button column on the right covers a further 100 px from y 1164
-  down, so the visible area is `PLATFORM_SAFE` minus the `PLATFORM_BUTTONS` notch at its
-  lower-right corner. The column's top (`PLATFORM_BUTTONS_TOP`, 1164) is measured from the
-  reference drawing, which does not label it; it and the column's width
-  (`PLATFORM_BUTTONS_WIDTH`, 100) are named constants the owner tunes by eye with the studio's
-  Zones button. Module constants, not `Preset` fields: no preset and no change request moves them.
+- `PLATFORM_SAFE` (left 70, right 1010, top 270, bottom 1470) and `PLATFORM_BUTTONS` (left 880,
+  right 1010, top 833, bottom 1470): where TikTok's full screen player leaves the video visible at
+  1080x1920 (owner decision 2026-11-19, replacing the 2026-11-03 values 35, 1045, 220, 1470 and the
+  notch 945, 1164 from a safe-zone reference, which came from issue #114's 120, 840, 252, 1164). Measured
+  from the owner's iPhone screenshots of that player (923x2000 px each): a phone taller than 9:16
+  scales the video to the height above its black bottom panel (1807 of 2000 px, a factor of 0.941)
+  and crops the sides, so only x 50 to 1030 of the video shows; the video's last row meets the panel.
+  Calibrated on the engine's own cards: 360 px wide (`visual/card`), they show 338 px wide at
+  that factor, and a card at the old safe zone's left edge (x 35) has its right edge where the
+  screenshot shows it. In video pixels the player covers: the status bar, back arrow and the
+  "Find related content" search box (y 0 to 247, the search box x 170 to 990); the right rail of
+  avatar, like, comment, save, more and music disc (x 900 to 1011, y 853 to 1748); the username and
+  caption (x 79 to 400, y 1645 to 1758); the promo bar, the progress bar and the panel (y 1785 down). Each
+  edge of `PLATFORM_SAFE` keeps about 20 px from what is measured (left 50 + 20, right 1030 - 20,
+  top 247 + 23), the notch's left (880) and top (833) keep 20 px from the rail (900, 853) and run
+  down to the bottom of the box. The bottom stays 1470: everything the player draws down there starts
+  at y 1645, and Instagram Reels covers about the same. `src/preset.test.ts` holds each measured box
+  and asserts the safe zone excludes it. Module constants, not `Preset` fields: no preset and no
+  change request moves them. The safe zone is one for every platform (the code has no per platform
+  zones): TikTok's full screen player sets it, Instagram Reels shows a little more.
+- Engine-placed cards (`visual/card`) are placed in the zones, which are cut to `S` with the notch an
+  obstacle, so they stay inside `S` and off the rail's notch; `engine.test.ts` asserts it for six
+  heads. The `safe-box` check reads texts only. A card the owner moves keeps its own rule
+  (`owner-edits.md`: at least 20% inside the frame).
 - Fonts: a font pair (`src/font-pairs.ts`, `FONT_PAIRS`, the seven approved pairs; `app_docs/font-pairs.md`)
   gives two roles. `artistic` (the classic pair: Playfair Display Italic) writes the accents, a transition's
   key phrase and number, the hook and the big word;
@@ -851,7 +865,7 @@ readable reason string (an empty list means every rule passes):
 
 - `safe-box`: text inside `SAFE_ZONE.box` (`PLATFORM_SAFE`) and clear of `SAFE_ZONE.notch`
   (`PLATFORM_BUTTONS`), the one safe zone (the edge and value that run past the box, or `runs into
-the platform button column below y 1164` with the right edge past x 945). A transition's text
+the platform button column below y 833` with the right edge past x 880). A transition's text
   levels count as text, and so does a big word behind the speaker (`big word <id> ("<text>")`, its box
   from `placedBigWord`): decision 2 of `specs/layout-engine.md`, it keeps `S` like every text; there is
   no `frame` check.
@@ -1111,7 +1125,8 @@ never fatal.
   platform guard whatever the preset's box; `face` fails for a caption over the head; `sound-gap` and
   `time-in-speech` fail as their rules say; `safe-box` for a big word set past the safe box's bottom;
   `big-word-timing` and the big word's own timing checks.
-- `src/preset.test.ts`: the intersection, the platform guard and its notch (`SAFE_ZONE`), the fallback
+- `src/preset.test.ts`: the intersection, the platform guard and its notch (`SAFE_ZONE`), the safe zone against each
+  measured box of TikTok's full screen player (the side crop, the top bar, the rail, the username block, the bottom), the fallback
   lines inside the safe zone, the numbered kind only, the Intense pace (something new every 3 s, the hook
   to 3 s), and the accent and big word timing.
 - `src/engine-zones.test.ts`: the zone table (`zonesAt`), each zone with a head and with none, and every
@@ -1321,7 +1336,10 @@ never fatal.
   check and no frame margin for it.
 - Text never enters the platform zones: `PLATFORM_SAFE` and `PLATFORM_BUTTONS` are a guard, never
   a preset value, and no preset or change request moves them.
-- Never rewrite a stored version to fit the guard; it shows its failed check.
+- Never rewrite a stored version to fit the guard; it shows its failed check. A version saved
+  before 2026-11-19 was placed in the old zone (x 35 to 1045, from y 220, the notch from 945 and
+  y 1164): it is never placed again, and `safe-box` reports every text of it that is left of 70,
+  right of 1010, above 270 or in the new notch (x 880 and y 833 on), until the next relayout.
 - Nothing Node-only or browser-only in `packages/edit`; the caller injects the platform.
 - Never commit an asset without its licence (`assets/fonts/OFL-*.txt`, one per font family,
   `assets/sounds/LICENSE-sounds.md`, `assets/visuals/LICENSE-visuals.md`).

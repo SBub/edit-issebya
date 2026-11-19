@@ -3211,8 +3211,8 @@
         "description": "a question mark on a wall",
         "image": "assets/visuals/visual-1.jpg",
         "box": {
-          "x": 645,
-          "y": 260,
+          "x": 610,
+          "y": 310,
           "width": 360,
           "height": 459
         }

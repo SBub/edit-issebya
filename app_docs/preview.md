@@ -113,7 +113,7 @@ rebuilds it` in place of the player. Sends `studio_preview_opened` (`reel_id`) o
   button (`aria-pressed`, off on every open, never saved, switched off when the preview expands and
   left off on collapse) shows a non-interactive layer
   (`data-testid="platform-zones"`, `aria-hidden`, `pointer-events-none`) over the preview that
-  shades what TikTok and Instagram cover: the four margins outside `PLATFORM_SAFE` (`top`,
+  shades what TikTok's full screen player covers (and Instagram about as much): the four margins outside `PLATFORM_SAFE` (`top`,
   `bottom`, `left`, `right`) and the button column's notch (`buttons`, from `PLATFORM_BUTTONS`).
   `platformZones(frame, safe, buttons)` gives them as percentages of the frame, so they scale with
   the player. It is never part of
@@ -177,11 +177,11 @@ jsdelivr.
   at a seek target while the footage past the served bytes is held. Test 3: a new version rebuilds the preview
   without a reload and the clicks are scheduled within 10 ms of their anchors, with no sound `<audio>`
   left in the frame.
-- Unit: `platform-zones.test.ts` (the top zone's height 220/1920, the bottom zone's top at
-  1470/1920, the left zone's width 35/1080, the right zone's left at 1045/1080, the `buttons` notch
-  from 945/1080 across and 1164/1920 down to the right and bottom zones, no overlap). E2E: `preview.spec.ts` toggles Zones: the layer is absent, then shown with
-  its zones at the guard's edges (the bottom at 1470, the right at 1045, the notch at 945 and
-  1164), Play still works through it, and it hides again.
+- Unit: `platform-zones.test.ts` (the top zone's height 270/1920, the bottom zone's top at
+  1470/1920, the left zone's width 70/1080, the right zone's left at 1010/1080, the `buttons` notch
+  from 880/1080 across and 833/1920 down to the right and bottom zones, no overlap). E2E: `preview.spec.ts` toggles Zones: the layer is absent, then shown with
+  its zones at the guard's edges (the bottom at 1470, the right at 1010, the notch at 880 and
+  833), Play still works through it, and it hides again.
 - E2E: `preview.spec.ts`, "a question builds up word by word as it is spoken, with a question mark at
   its end": a version with a QUESTION on the fixture clip ("test clip for the real studio?"). Before
   it starts nothing of it shows; halfway through each word exactly the words spoken so far are at full
