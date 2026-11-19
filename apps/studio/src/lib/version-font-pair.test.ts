@@ -10,7 +10,7 @@ describe("fontPairOfEdit", () => {
     );
   });
 
-  it("is null without bytes, for a pair outside the six, or for an edit with no pair", () => {
+  it("is null without bytes, for a pair outside the seven, or for an edit with no pair", () => {
     expect(fontPairOfEdit(null)).toBeNull();
     expect(fontPairOfEdit(bytes(JSON.stringify({ font_pair: "primary" })))).toBeNull();
     expect(fontPairOfEdit(bytes(JSON.stringify({ duration: 9 })))).toBeNull();

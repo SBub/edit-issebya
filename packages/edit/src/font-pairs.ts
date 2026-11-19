@@ -25,6 +25,7 @@ export const FONT_PAIR_IDS = [
   "handwritten",
   "retro",
   "bold",
+  "modern",
 ] as const;
 export type FontPairId = (typeof FONT_PAIR_IDS)[number];
 
@@ -37,7 +38,7 @@ export interface FontPair {
   artistic: PresetFont;
 }
 
-// The six pairs the owner approved. `classic` is the default.
+// The seven pairs the owner approved. `classic` is the default.
 export const FONT_PAIRS: Record<FontPairId, FontPair> = {
   classic: {
     id: "classic",
@@ -138,6 +139,23 @@ export const FONT_PAIRS: Record<FontPairId, FontPair> = {
       family: "Oswald ExtraLight",
       file: "assets/fonts/Oswald-ExtraLight.ttf",
       weight: 200,
+      style: "normal",
+    },
+  },
+  modern: {
+    id: "modern",
+    label: "Modern",
+    standsInFor: "Inter Light + Inter Tight Bold",
+    simple: {
+      family: "Inter Light",
+      file: "assets/fonts/Inter-Light.ttf",
+      weight: 300,
+      style: "normal",
+    },
+    artistic: {
+      family: "Inter Tight Bold",
+      file: "assets/fonts/InterTight-Bold.ttf",
+      weight: 700,
       style: "normal",
     },
   },

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { isQuestion, questionReveal, questionShownAt, questionText } from "./question.ts";
+import { isQuestion, questionText } from "./question.ts";
+import { revealShownAt, wordReveal } from "./reveal.ts";
 
 // "pick one idea and bring it": six spoken words, a pause after the third.
 const SPOKEN = [
@@ -24,17 +25,17 @@ describe("the question mark", () => {
   });
 
   it("is part of the last word, so it appears with it", () => {
-    const reveal = questionReveal(TEXT, SPOKEN, SPAN);
+    const reveal = wordReveal(TEXT, SPOKEN, SPAN);
     expect(reveal.at(-1)).toEqual({ text: "it?", at: 3.9 });
     expect(reveal.filter((word) => word.text.includes("?"))).toHaveLength(1);
-    expect(questionShownAt(reveal, 3.89)).not.toContain("?");
-    expect(questionShownAt(reveal, 3.9)).toBe("pick one idea and bring it?");
+    expect(revealShownAt(reveal, 3.89)).not.toContain("?");
+    expect(revealShownAt(reveal, 3.9)).toBe("pick one idea and bring it?");
   });
 });
 
 describe("the question's reveal", () => {
   it("shows each word from the moment it is spoken", () => {
-    expect(questionReveal(TEXT, SPOKEN, SPAN)).toEqual([
+    expect(wordReveal(TEXT, SPOKEN, SPAN)).toEqual([
       { text: "pick", at: 2.0 },
       { text: "one", at: 2.3 },
       { text: "idea", at: 2.55 },
@@ -45,29 +46,29 @@ describe("the question's reveal", () => {
   });
 
   it("builds the question up: the words shown at a given time", () => {
-    const reveal = questionReveal(TEXT, SPOKEN, SPAN);
-    expect(questionShownAt(reveal, 1.99)).toBe("");
-    expect(questionShownAt(reveal, 2.0)).toBe("pick");
-    expect(questionShownAt(reveal, 2.29)).toBe("pick");
-    expect(questionShownAt(reveal, 2.4)).toBe("pick one");
+    const reveal = wordReveal(TEXT, SPOKEN, SPAN);
+    expect(revealShownAt(reveal, 1.99)).toBe("");
+    expect(revealShownAt(reveal, 2.0)).toBe("pick");
+    expect(revealShownAt(reveal, 2.29)).toBe("pick");
+    expect(revealShownAt(reveal, 2.4)).toBe("pick one");
     // Through the pause nothing new appears and nothing leaves.
-    expect(questionShownAt(reveal, 3.0)).toBe("pick one idea");
-    expect(questionShownAt(reveal, 3.7)).toBe("pick one idea and bring");
+    expect(revealShownAt(reveal, 3.0)).toBe("pick one idea");
+    expect(revealShownAt(reveal, 3.7)).toBe("pick one idea and bring");
     // Whole from its last word to its end.
-    expect(questionShownAt(reveal, 4.2)).toBe("pick one idea and bring it?");
+    expect(revealShownAt(reveal, 4.2)).toBe("pick one idea and bring it?");
   });
 
   it("shows the first word as the question starts, even when it starts before its word", () => {
     // A question lengthened to the shown floor starts before its first word.
-    const reveal = questionReveal(TEXT, SPOKEN, { start: 1.7, end: 4.2 });
+    const reveal = wordReveal(TEXT, SPOKEN, { start: 1.7, end: 4.2 });
     expect(reveal[0]).toEqual({ text: "pick", at: 1.7 });
     expect(reveal[1]).toEqual({ text: "one", at: 2.3 });
   });
 
   it("never shows a word after the question's end, nor before the word shown before it", () => {
-    const reveal = questionReveal(TEXT, SPOKEN, { start: 2.0, end: 3.5 });
+    const reveal = wordReveal(TEXT, SPOKEN, { start: 2.0, end: 3.5 });
     expect(reveal.map((word) => word.at)).toEqual([2.0, 2.3, 2.55, 3.4, 3.5, 3.5]);
-    const unordered = questionReveal("a b c?", [{ start: 1 }, { start: 3 }, { start: 2 }], {
+    const unordered = wordReveal("a b c?", [{ start: 1 }, { start: 3 }, { start: 2 }], {
       start: 1,
       end: 4,
     });
@@ -76,19 +77,19 @@ describe("the question's reveal", () => {
 
   it("spreads a text with another word count over its spoken words in order", () => {
     // A word fix written as one word for two spoken ones.
-    expect(
-      questionReveal("lock-in?", [{ start: 1 }, { start: 1.4 }], { start: 1, end: 2 }),
-    ).toEqual([{ text: "lock-in?", at: 1 }]);
+    expect(wordReveal("lock-in?", [{ start: 1 }, { start: 1.4 }], { start: 1, end: 2 })).toEqual([
+      { text: "lock-in?", at: 1 },
+    ]);
     // Four shown words over two spoken ones.
     expect(
-      questionReveal("a b c d?", [{ start: 1 }, { start: 2 }], { start: 1, end: 3 }).map(
+      wordReveal("a b c d?", [{ start: 1 }, { start: 2 }], { start: 1, end: 3 }).map(
         (word) => word.at,
       ),
     ).toEqual([1, 1, 2, 2]);
   });
 
   it("shows a question with no spoken word whole from its start", () => {
-    expect(questionReveal("why now?", [], { start: 5, end: 6 })).toEqual([
+    expect(wordReveal("why now?", [], { start: 5, end: 6 })).toEqual([
       { text: "why", at: 5 },
       { text: "now?", at: 5 },
     ]);

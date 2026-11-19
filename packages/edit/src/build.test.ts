@@ -86,10 +86,39 @@ describe("build", () => {
     expect(html).toContain('data-composition-id="main"');
     expect(html).toContain("gsap.timeline({ paused: true })");
     expect(html).toContain('window.__timelines["main"] = tl;');
+    // A visual and a big word come in with the pop, at the preset's -6 dB.
     expect(html).toMatch(
-      /<audio id="click-visual-1" class="clip" src="assets\/sounds\/mouse-click-trimmed.wav" data-start="[\d.]+" data-duration="0.230" data-track-index="60" data-volume="0.5012"><\/audio>/,
+      /<audio id="click-visual-1" class="clip" src="assets\/sounds\/pop.wav" data-start="[\d.]+" data-duration="0.152" data-track-index="60" data-volume="0.5012"><\/audio>/,
     );
+    expect(html).toMatch(
+      /<audio id="click-big-word-1" class="clip" src="assets\/sounds\/pop.wav" data-start="[\d.]+" data-duration="0.152" data-track-index="60" data-volume="0.5012"><\/audio>/,
+    );
+    // The stored sound track still says `click` for both: nothing is rewritten.
+    expect(engine.edit.tracks.sounds.map((item) => [item.id, item.sound])).toEqual([
+      ["click-visual-1", "click"],
+      ["click-big-word-1", "click"],
+    ]);
     expect(html).toContain('<span id="accent-1" class="text f-artistic"');
+  });
+
+  it("plays the visual's pop and the big word's on the export's sound page, as on the full page", async () => {
+    const measurer = await nodeMeasurer();
+    const page = (layer: "full" | "sound" | "front") =>
+      build(engine.edit, engine.transcript, engine.headTrack, ISSEBYA_PRESET, measurer, { layer });
+    const cue = (html: string, id = "click-visual-1") =>
+      html.split("\n").find((line) => line.includes(`<audio id="${id}"`));
+    const sound = page("sound");
+    const full = page("full");
+    expect(cue(sound.html)).toContain('src="assets/sounds/pop.wav"');
+    expect(cue(sound.html)).toBe(cue(full.html));
+    expect(cue(sound.html, "click-big-word-1")).toContain('src="assets/sounds/pop.wav"');
+    expect(cue(sound.html, "click-big-word-1")).toBe(cue(full.html, "click-big-word-1"));
+    expect(
+      sound.assets.filter((asset) => asset.role === "sound").map((asset) => asset.path),
+    ).toEqual(["assets/sounds/pop.wav"]);
+    // No picture page names a sound.
+    expect(cue(page("front").html)).toBeUndefined();
+    expect(cue(page("front").html, "click-big-word-1")).toBeUndefined();
   });
 
   it("lists every referenced file with its role, sorted", async () => {
@@ -104,7 +133,7 @@ describe("build", () => {
     expect(assets.map((asset) => [asset.path, asset.role])).toEqual([
       ["assets/fonts/InterTight-SemiBold.ttf", "font"],
       ["assets/fonts/PlayfairDisplay-Italic.ttf", "font"],
-      ["assets/sounds/mouse-click-trimmed.wav", "sound"],
+      ["assets/sounds/pop.wav", "sound"],
       ["assets/visuals/visual-1.jpg", "visual"],
       [`masks/${"3".repeat(64)}.mp4`, "mask"],
       ["source.mp4", "footage"],
@@ -173,7 +202,7 @@ describe("build", () => {
       '<div id="visual-1" class="clip visual-picture" data-start="5.206" data-duration="2.000" data-track-index="30" style="left: 600px; top: 300px; width: 400px; height: 300px">\n  <img src="assets/visuals/visual-2.jpg" alt="">\n</div>',
     );
     expect(html).toContain(
-      ".visual-picture img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; }",
+      ".visual-picture img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; border-radius: 16px; }",
     );
     expect(assets).toContainEqual({
       path: "assets/visuals/visual-2.jpg",
@@ -225,7 +254,12 @@ describe("build", () => {
       ISSEBYA_PRESET,
       await nodeMeasurer(),
     );
-    expect(html).toContain("one<br />two<br />three four");
+    // Each word its own element (the word-by-word entrance), the lines centred.
+    const word = (index: number, text: string) =>
+      `<span id="${accent.id}_w${index}" class="q">${text}</span>`;
+    expect(html).toContain(
+      `; text-align: center">${word(1, "one")}<br />${word(2, "two")}<br />${word(3, "three")} ${word(4, "four")}</span>`,
+    );
   });
 
   it("escapes text and style values", async () => {
@@ -239,7 +273,11 @@ describe("build", () => {
       ISSEBYA_PRESET,
       await nodeMeasurer(),
     );
-    expect(html).toContain("&lt;b&gt;&quot;Tom&quot; &amp; &#39;Jerry&#39;&lt;/b&gt;</span>");
+    // Each word is escaped inside its own element.
+    const id = edit.tracks.captions[0]!.id;
+    expect(html).toContain(
+      `<span id="${id}_w1" class="q">&lt;b&gt;&quot;Tom&quot;</span> <span id="${id}_w2" class="q">&amp;</span> <span id="${id}_w3" class="q">&#39;Jerry&#39;&lt;/b&gt;</span></span>`,
+    );
     expect(html).toContain("font-family: &quot;Inter Tight SemiBold&quot;");
     expect(html).not.toContain("<b>");
   });

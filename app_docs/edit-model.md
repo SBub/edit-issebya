@@ -25,7 +25,7 @@ types until slice 9 brings the live preview.
 
 ### Format
 
-- `src/schema.ts`: `edit.json`, format 1: `format`, `preset` (`"issebya"`), `font_pair` (required: one of the six pair ids, `src/font-pairs.ts`; a version without it fails to parse with that reason, never read as classic), `duration`, `inputs`
+- `src/schema.ts`: `edit.json`, format 1: `format`, `preset` (`"issebya"`), `font_pair` (required: one of the seven pair ids, `src/font-pairs.ts`; a version without it fails to parse with that reason, never read as classic), `duration`, `inputs`
   (the pipeline outputs it was made from, each `{ step, fingerprint, file }`: `footage`,
   `transcript`, `head_track`) and `tracks`: `footage`, `captions`, `overlays`
   (`kind: "accent"`, or `kind: "hook"` for the written hook, below), `transitions` (the LIST items, `numbered`, the only kind, each with its `list` and `number`), `sounds` (`click`) and the optional
@@ -44,10 +44,11 @@ types until slice 9 brings the live preview.
   It may carry an optional
   `description` (a short plain phrase of what the frame would show, at most 120 characters, the
   decide answer's own limit is 8 words), which is never shown on screen; the builder draws a
-  `div.clip.visual` with a white border of the `visual/card` entry's stroke (8 px), transparent
+  `div.clip.visual` with a white border of the `visual/card` entry's stroke (2 px) and rounded corners (16 px), transparent
   inside (the `.visual` rule is written only on a page with a visual). With `image`, the builder draws
   `div.clip.visual-picture` filling the box with an `<img>` of the same box (no crop), the stroke drawn
-  over it (the `.visual-picture` rules). Or a big word (`kind: "word"`,
+  over it (the `.visual-picture` rules: the card, its picture and its stroke share the 16 px radius, and the
+  card hides what is outside it). Or a big word (`kind: "word"`,
   `text` one or two words of 1 to 24 characters each, with no space inside a
   word and no `<`, `>` or `&`, the two joined by one space: "distribution channel"). It is anchored
   on words like a caption (a big word starts on its first word with a negative
@@ -126,15 +127,17 @@ and rule 6 (`engine-place.ts`).
   reference drawing, which does not label it; it and the column's width
   (`PLATFORM_BUTTONS_WIDTH`, 100) are named constants the owner tunes by eye with the studio's
   Zones button. Module constants, not `Preset` fields: no preset and no change request moves them.
-- Fonts: a font pair (`src/font-pairs.ts`, `FONT_PAIRS`, the six approved pairs; `app_docs/font-pairs.md`)
+- Fonts: a font pair (`src/font-pairs.ts`, `FONT_PAIRS`, the seven approved pairs; `app_docs/font-pairs.md`)
   gives two roles. `artistic` (the classic pair: Playfair Display Italic) writes the accents, a transition's
-  key phrase and number and the hook; `simple` (Inter Tight SemiBold) writes captions, the big word and a
-  transition's lead-in. Each face is a static OFL instance in `assets/fonts/`. The builder lists a pair's
+  key phrase and number, the hook and the big word;
+  `simple` (Inter Tight SemiBold) writes captions and a transition's lead-in. Each face is a static OFL instance in `assets/fonts/`. The builder lists a pair's
   font file once even when both roles share it. All text is
   white (`#FFFFFF`). Sizes are not here: the style table (`STYLES` in `src/variants.ts`) holds the
   bases, `accent` 110 px and `caption` 50 px, and the big word's `largest-fit`. An item with no size
   in an edit takes its font's style base.
-- Captions: `#FFFFFF`, rise 12 px over 0.18 s (`power2.out`), fade out 0.15 s after the group's last word
+- Captions: `#FFFFFF`, each word cut in as it is spoken ("The
+  word-by-word entrance"; the preset's rise of 12 px over 0.18 s, `power2.out`, is now the hook's and the
+  list levels' only), fade out 0.15 s after the group's last word
   (the span ends one fade past it, never past the next group's start; spec decision 25), at least 0.25 s on
   screen, a group breaks at a 0.35 s pause or after 4 units, line gap 14. The caption line (y 1290) is
   the zone table's.
@@ -155,12 +158,31 @@ and rule 6 (`engine-place.ts`).
   a stored click with no `gain_db` plays at it too, in the preview through
   `apps/studio/src/lib/sound-schedule.ts` and in the export through the page's `data-volume`, both from
   `gain_db ?? gainDb`), at least 0.25 s apart.
+- The sounds: `sounds` holds four brief sounds by name, `SoundKey` (`click`, `shutter`, `whoosh`,
+  `pop`): `shutter` `assets/sounds/camera-shutter.wav` 0.448 s, `whoosh` `assets/sounds/whoosh.wav`
+  0.47 s, `pop` `assets/sounds/pop.wav` 0.152 s, each -6 dB and 0.25 s apart like the click. All are real
+  recordings under CC0, mono, trimmed, with short fades; source, author, licence and changes are in
+  `assets/sounds/LICENSE-sounds.md`. Each file is levelled so that its loudest 100 ms has the click's
+  RMS (-22.8 dBFS), which is what makes sounds this short equally loud, so the one gain suits all four.
+- A variant entry may name one as its `sound` knob (`Common.sound`, `src/variants.ts`), typed
+  `SoundKey`: a name the preset does not have fails typecheck. Two entries have one, both `pop`
+  (owner request 2026-11-19): `visual/card` and `bigword/behind`, so
+  a VISUAL and a BIGWORD come in with a pop where they had the click. `cueSound(sound, behind)`
+  (`src/clicks.ts`) says which sound a sound item plays: the cue of a behind item (`click-<the
+item's id>`: a visual's, the engine's and an owner's added card's, and a big word's) plays its
+  entry's `sound`; any other item plays the sound it names. It is read at every build and never
+  stored: the sound track is written as before (`sound: "click"`, same id, same anchors, same gap,
+  the big word's cue still on its 0.2 s lead), so the timing and the -6 dB gain are unchanged and a
+  version saved before plays the pop too, with no new version. The builder (the full page and the
+  export's sound page, and the `assets` list) and the preview's schedule (`soundHits`) both call
+  it. `shutter` and `whoosh` stay in the set, cued by nothing yet.
 - Behind (`behind`): `padFrames` 3 and `frameRate` 30: the cut-out covers each big word that needs one plus 3 frames
   on each side. A big word needs it only where the head reaches it (`bigWordNeedsCutout`, the box's bottom
   below the highest robust face's top (`facesOver`, the faces the placer reads) over its padded span less
   `HAIR_MARGIN` 20 px); no head sample in the span, no cut-out. The big word's font and colour are the `bigWord` style's; its face rule (30% of its
   height at most behind the head) is rule 6 in `engine-place.ts`. A VISUAL's card is the `visual/card`
-  entry's: a white stroke of 8 px (the style's `stroke.px`, read by the builder's `.visual` rule), its
+  entry's: a thin white stroke of 2 px (the style's `stroke.px`, read by the builder's `.visual` rule) with corners
+  rounded 16 px (the builder's own value), its
   width a third of the frame, its height the stand-in picture's own aspect (no crop), its timing 1 s to 2 s (`words-min-max`), a short beat rather than a
   backdrop. The card's corner inset (40 px) is the zone table's `corner`. No count per reel.
 - Visuals: a white stroke frame over the footage, in front of the speaker, no fill and no text
@@ -230,8 +252,9 @@ and rule 6 (`engine-place.ts`).
   goldens compare). The same wasm on the same font bytes gives identical widths everywhere.
 - The builder places each caption, accent, hook and big word at the `position` the layout engine set
   on it (`placedText`, `src/build.ts`), with its `size` and, when it has `breaks`, its lines
-  (rendered joined by `<br />`, centred; a question's lines are left-aligned and its words are
-  elements of their own, "The question's look"). A shown caption or overlay with no position throws
+  (rendered joined by `<br />`, centred; a question's lines are left-aligned, "The question's look").
+  The words of every caption, accent and question are elements of their own ("The word-by-word
+  entrance"). A shown caption or overlay with no position throws
   `build: <kind> <id> has no position; place the edit first`, and a big word with no `position` or
   `size` throws the same way. `src/html.ts` escapes text and attributes and formats numbers.
 - `src/lines.ts`: `textLines(text, breaks)` (a text cut after each of its `breaks`, the builder and the transition levels share it) and `breaksOf(lines)` (the breaks the engine writes for its lines).
@@ -250,8 +273,8 @@ and rule 6 (`engine-place.ts`).
   captions with `hidden_by`, and a stored list caption with none whose start falls inside its list's layer),
   so the page and the checks never see it. The engine splits a caption in time so that `hidden_by` covers
   only a stretch the text is on screen for (see Placement, "never the same word twice").
-- The hook renders like an accent (the artistic font, white, the same rise in and fade out, no
-  shadow) with its own class: `<span class="text hook f-artistic">`, its lines centred by the
+- The hook renders in the accent's style (the artistic font, white, no shadow), whole, with the rise
+  in (12 px over 0.18 s) and the caption's fade out, and with its own class: `<span class="text hook f-artistic">`, its lines centred by the
   `.hook { text-align: center; }` rule, written only on a page with a hook (so every stored page
   builds byte for byte as before). `TextBox.kind` is `hook` for it.
 - Behind the speaker, one composite per mask span, above the footage and under transitions and
@@ -375,21 +398,22 @@ looks different on screen so the owner can tell the two apart (owner decision 20
   only the reveal, the mark and the left alignment are the question's.
 - The whole question stays until its end, which is the accent's: its last word's end, with no hold
   after it. It leaves with the accent's fade (`caption.outSeconds`, 0.15 s, ending on its end).
-- `src/question.ts` holds the shared pure helpers: `QUESTION_PREFIX` and `isQuestion` (an accent
-  overlay with a `question-` id), `questionText`, `questionReveal(text, spoken, span)` (each shown word
-  with its moment: its spoken word's start, never before the question's start nor after its end, never
+- `src/question.ts` holds the question's own pure helpers: `QUESTION_PREFIX` and `isQuestion` (an accent
+  overlay with a `question-` id) and `questionText`. The reveal is shared with accents and captions
+  (`src/reveal.ts`, "The word-by-word entrance"): `wordReveal(text, spoken, span)` (each shown word
+  with its moment: its spoken word's start, never before the text's start nor after its end, never
   before the word shown before it; a text with another word count than its spoken words, a word fix
-  that joins words, is spread over them in order) and `questionShownAt(reveal, time)` (the question as far as it is
+  that joins words, is spread over them in order) and `revealShownAt(reveal, time)` (the text as far as it is
   built at a time).
 - The engine (`placeAccent`, `engine-elements.ts`) measures, wraps and places the question's text with
   its mark, so the box it keeps clear holds the mark. The stored overlay is unchanged in shape:
   `kind: "accent"`, id `question-N`, `words`, `position` (left-aligned), `size`, `breaks`; no `text`.
 - The builder (`placedText`, `build.ts`) gives every question overlay its mark and its reveal
-  (`TextBox.question`), whatever version stored it, and draws it as
+  (`TextBox.words`), whatever version stored it, and draws it as
   `<span id="question-N" class="text f-artistic">` holding one `<span id="question-N_wK" class="q">`
   per shown word (an underscore, which no item id may hold), the words of a line joined by spaces and
   the lines by `<br />`, with no `text-align`. Every word is in its final place from the start, hidden
-  (`.q { opacity: 0; }`, written only on a page with a question), so the lines never reflow. The
+  (`.q { opacity: 0; }`), so the lines never reflow. The
   timeline holds one tween for the text (opacity 0 to 1 at its start), one per word (opacity 0 to 1 at
   its moment) and the accent's out-fade. Each in-tween lasts 1 ms, not zero: HyperFrames reuses a still
   frame only between a timeline's keyframes, so a cut written as a tween is drawn on its frame in the
@@ -400,6 +424,46 @@ looks different on screen so the owner can tell the two apart (owner decision 20
   that line was the widest and sat at the safe zone's edge or beside another text, the checks of that
   build report it (`safe-box`, `text-overlap`); nothing is rewritten. A new version (a relayout, a
   start over) is placed with the mark.
+
+### The word-by-word entrance
+
+Every ACCENT and every CAPTION comes in the way a question does, word by word, each word
+cutting in at the moment it is spoken (owner request 2026-11-19). It is their only entrance: the
+rise and the fade in are gone for them.
+
+- Each word appears at its spoken word's start in the transcript, the same times the captions are
+  anchored on. A word cuts in (no fade, no rise). The whole text then stays until its end and leaves
+  with the fade it always had (`caption.outSeconds`, 0.15 s). Nothing about its time on screen, its
+  place, its size or its lines changes: only how it comes in.
+- Every word is in its final place from the start, hidden, so a line never reflows while the text
+  builds. An accent's lines stay centred and get no mark; only a question is left-aligned and ends with
+  its mark.
+- A caption is one unit, nearly always one word, so a caption group already built up caption by
+  caption: each caption now cuts in on its word. A caption of several words (a number with its unit, a
+  month with its day) builds up word by word inside itself.
+- `src/reveal.ts`, `wordReveal`, gives the moments, for a question, an accent and a caption alike:
+  - a text with as many shown words as spoken ones: each on its own word;
+  - a text with another word count (a caption whose word fix is written as several words or joins
+    words, an accent with its own `text`): spread over the spoken words in order (two words written
+    for one spoken word come in together on it; one word written for two comes in on the first);
+  - a word said before the text's own start (a text that starts late) shows as the text starts; the
+    first word always does; no word shows after the text's end, nor before the word shown before it;
+  - a text with no spoken word (an accent with only its own `text`) is whole from its start.
+- A caption hidden under an accent, a big word or a list (`hidden_by`, `hiddenCaptionIds`) stays off
+  the page: no element and no tween, as before.
+- The builder (`placedText`, `build.ts`) gives every caption and every accent overlay its reveal
+  (`TextBox.words`) and draws it as a question is drawn: `<span id="<item>" class="text f-...">`
+  holding one `<span id="<item>_wK" class="q">` per shown word, the words of a line joined by spaces
+  and the lines by `<br />`. The `.q { opacity: 0; }` rule is on every page with such a text. The
+  timeline holds one tween for the text (opacity 0 to 1 at its start), one per word (opacity 0 to 1 at
+  its moment), each lasting 1 ms (HyperFrames reuses a still frame only between a timeline's
+  keyframes), and the out-fade. The export's front page draws the same elements and tweens.
+- Unchanged: the hook (nobody says it: whole, with the rise), a list's levels (whole, each on its
+  word with the rise), a big word and a visual (hard cuts).
+- A version saved before this entrance renders with it too, with no new version: the builder reads
+  the same stored captions and overlays. A stored version is never rewritten.
+- The studio's move and resize editor reads a caption's and an accent's lines as lines of word
+  elements, as it reads a question's (`apps/studio/src/lib/live-page.ts`).
 
 ### The layout engine's input
 
@@ -484,7 +548,10 @@ deterministic (no clock, no randomness, no I/O). Modules in `packages/edit/src`:
   words `hides` the captions while it shows, and for a box its `aspect` and `width` share, for a stack its
   `levels`. It holds no size and no position. A wrong field or an unknown zone fails typecheck.
 - `STYLES` is the style table: `accent` (`artistic`, white, base 110), `caption` (`simple`, white,
-  base 50), `bigWord` (`simple`, white, `largest-fit`). Two entries on one style share its base. The
+  base 50), `bigWord` (`artistic`, white, `largest-fit`: Inter Tight Bold in the `modern` pair, each pair's accent face in the
+  others). The placer measures the big word's largest fit in that face (`entry.style.font`,
+  `engine-place.ts`), `placedBigWord` (`src/behind.ts`) its box, and the builder writes its class
+  from the same style (`f-artistic`), so the size is the drawn word's. Two entries on one style share its base. The
   base is the cap: a text is never set above it, and shrinks from it.
 - Timing options: `words`; `words-lead` (a lead before the first word, at least a minimum: the big
   word, 0.2 s and 1.5 s); `words-min-max` (the visual, 1 s to 2 s); `words-entrance` (the list, 0.3 s
@@ -803,7 +870,14 @@ never fatal.
     it shows each placed as when alone, neither among the other's blockers, the card drawn under the text.
   - "clicks on visuals and big words": a click as each placed visual and big word comes in and
     nothing else (at `data-volume="0.5012"`, the -6 dB click), a visual the face leaves no spot off it
-    for still clicking, and a stored version's sounds left as they are.
+    for still clicking, and a stored version's sounds left as they are; the visual's cue and the big
+    word's built with the pop, the track saying `click` for both.
+- `src/clicks.test.ts`: the cues and their gap; `cueSound` (the pop for a visual's cue, for an
+  owner's added card's and for a big word's, an item that is no behind item's cue and a sound named
+  on the track kept); the four sounds, each under 0.5 s at -6 dB; the pop the visual entry's
+  `sound` and the big word entry's, and no other entry with one; a sound name the preset lacks
+  refused at compile time. `src/build.test.ts`: the pop on the full page and on the export's sound
+  page for both cues, the one sound file in `assets`, none on the front page.
   - "transitions": a transition shows exactly its phrase (in at its first word, out at its last word's
     end, no hold after a long pause), a short phrase keeps its words, the lead-in and
     the key phrase take the style roles inside their area, a face covered only where the face fills
@@ -836,8 +910,19 @@ never fatal.
   - "the question's look: word by word, a question mark at the end": each word its own hidden element,
     the mark on the last, left-aligned at the stored place and size; measured and placed with its mark
     inside the safe zone; each word cut in at its spoken moment and the text out with the accent's fade;
-    an accent and a page with no question unchanged; a stored question shown with the look at its stored
+    an accent with no mark and its lines centred; a stored question shown with the look at its stored
     place; the front page's question equal to the full page's.
+  - "accents and captions come in word by word, as they are spoken": an
+    accent's words each a hidden element; each cut in at its spoken moment, the fade out kept; no accent
+    and no caption with the rise or the fade in; every shown caption cut in on its own word; a caption's
+    word fix of several words shown together on its spoken word; a caption of fewer shown words than
+    spoken ones spread in order; an accent whose own text has another word count spread in order; the
+    words said before an accent's start shown as it starts; a caption hidden under an accent or a big
+    word with no element and no tween; the hook, a list's levels and a big word unchanged; the front
+    page equal to the full page; a stored version shown with the entrance and left unchanged.
+- `src/reveal.test.ts`: the reveal of an accent and of a caption (each word on its spoken word, shorter
+  and longer texts spread in order, a late start, a text with no spoken word, a caption of one word, a
+  unit of two, a fix that joins two words, a fix of two words for one).
 - `src/question.test.ts`: the mark added once and never doubled, appearing with the last word; each word
   from the moment it is spoken and the words shown at a given time; the first word at the question's
   start; no word after the question's end or before the one before it; a text with another word count;
@@ -877,6 +962,9 @@ never fatal.
   export guardrail's question case (`apps/studio/e2e-tools/export-matches-preview.spec.ts`,
   `app_docs/export.md`). Both place the question with `withQuestion` and read its moments with
   `questionOf` (`apps/studio/test-support/transitions.ts`).
+- E2E, the word-by-word entrance: `apps/studio/e2e/preview.spec.ts`, "an
+  accent and a caption build up word by word as they are spoken", places an accent and a caption word
+  fix with `withAccent` and reads their moments with `revealOf` (the same file), `app_docs/preview.md`.
 - E2E: `apps/studio/e2e/upload.spec.ts` ends with `first_version: version 1 saved, ...`, the
   version row and its R2 key checked.
 
@@ -966,6 +1054,11 @@ never fatal.
 - Never hold a visual past its entry's maximum (2 s), or a big word past a second after its word
   (`afterSeconds`), in a new version; never refuse a stored version for an older, longer
   one.
+- A visual's cue and a big word's play the sound their entry names (`cueSound`; the pop for both): never
+  write that sound into the track, never change a cue's id, anchors or gap for it, and never read it
+  anywhere but through `cueSound`, or the preview and the export differ. Never add a sound that is
+  not a real recording under CC0 or in the public domain with its source, author and licence in
+  `assets/sounds/LICENSE-sounds.md`.
 - Never click on anything but a visual or a big word coming in, never off its start, and never two
   clicks closer than the sound's gap in a new version; never rewrite a stored version's sounds. A
   card the owner adds (`applyOwnerAdds`, `app_docs/owner-edits.md`) adds only its own click, and
@@ -1002,6 +1095,12 @@ never fatal.
   front page draws it on its frame.
 - The engine and the builder take a question's text from the same `questionText`: never add the mark
   in one and not the other, or the placed box and the drawn text differ.
+- The word-by-word reveal is the only entrance of an accent and of a
+  caption, and the three rules above about a question's words hold for theirs too: never a word before
+  it is spoken (a word said before the text starts shows as the text starts), never a reflow while the
+  text builds, never a zero-length cut. Never give the hook, a list's level, a big word or a visual the
+  reveal, and never show a caption that `hidden_by` hides. Take every moment from `wordReveal`
+  (`src/reveal.ts`): never a second copy of that rule.
 - A version with a `behind` item is saved only once every mask it names exists; the builder never
   builds a behind item without its mask.
 - A big word is checked against the safe box `S` like every text (`safe-box`); there is no `frame`

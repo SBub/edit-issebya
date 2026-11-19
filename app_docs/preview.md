@@ -43,7 +43,7 @@ clicks through Web Audio. It is built and tested for Chrome.
   entry as `{ path: maskPath(mask), key }`, step `cutout`) and `photoIds` (`inputs.photos`, each a
   uuid); a version without them has none, and a malformed list fails the whole read.
 - `apps/studio/src/app/api/edit-assets/[...path]/route.ts` and `src/lib/edit-assets.ts`: serve the
-  every font pair's files and the preset's click sound from `packages/edit/assets/` (allow-list: `allFontFiles()` and the preset,
+  every font pair's files and the preset's sounds from `packages/edit/assets/` (allow-list: `allFontFiles()` and the preset,
   404 for anything else, immutable cache). `outputFileTracingIncludes` in `apps/studio/next.config.ts`
   traces the files into the server output.
 - `apps/studio/src/components/ReelPreview.tsx`: loads the sources, fetches the edit, transcript, head
@@ -179,6 +179,18 @@ jsdelivr.
   opacity, the mark only with the last word; no word moves while the question builds; it is in the
   accent's face and colour, not centred; its words are not captions meanwhile
   (`app_docs/edit-model.md`, "The question's look").
+- The word-by-word entrance of accents and captions (`app_docs/edit-model.md`, "The word-by-word entrance"): the preview
+  shows it with no code of its own, since the builder writes it into the page (a hidden element per
+  word and a 1 ms tween at the moment the word is spoken) and the player runs that page's timeline.
+  Every accent and every caption builds up word by word as it is spoken, in place, and leaves with its
+  usual fade; the hook, the list, the big word and the visual come in as before. Every version shows
+  it, old ones too, with no new version. E2E: `preview.spec.ts`, "an accent and a caption build up
+  word by word as they are spoken": a version with an ACCENT on the fixture clip ("test clip for the
+  real studio") and the caption of "is" written as two words ("is so"). Before the accent starts
+  nothing of it shows; halfway through each word exactly the words spoken so far are at full opacity;
+  no word moves and the text never rises; the captions of the accent's words are not on the page. The
+  caption "this" is on at its word and "is so" not yet; 0.03 s after its word starts "is so" is whole
+  at full opacity (the old 0.18 s rise would still be fading in), both words together, unmoved.
 - E2E: `apps/studio/e2e/behind.spec.ts` is removed with the change box (`app_docs/change-requests.md`).
   The export guardrail (`apps/studio/e2e-tools/export-matches-preview.spec.ts`) still compares a photo
   and a big word behind the speaker, in preview and export, from start over answers.
@@ -189,7 +201,10 @@ jsdelivr.
 - One builder: never write a preview-only copy of the build logic. The transform only swaps asset
   URLs, adds `preload` and drops the sound clips.
 - The clock never advances while a video cannot play from the current point.
-- Sounds come only from the edit's sound track, never hard-coded.
+- Sounds come only from the edit's sound track, never hard-coded. Which sound an item plays is
+  `cueSound`'s answer (`packages/edit`), the same the builder writes for the export: a VISUAL's cue and a big word's play the pop
+  (`app_docs/edit-model.md`, "Preset values"); `sound-schedule.test.ts` checks it. The edit-assets
+  route serves every sound of the preset (the click, the shutter, the whoosh, the pop).
 - Never poll: read once, then follow Realtime.
 - Never store the built page.
 - Chrome only, but never block other browsers (show the note).

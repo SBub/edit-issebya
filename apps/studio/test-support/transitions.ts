@@ -14,7 +14,7 @@ import {
   createMeasurer,
   editFromAnswer,
   headTrackSchema,
-  questionReveal,
+  wordReveal,
   questionText,
   resolveTimeline,
   wordsText,
@@ -121,20 +121,54 @@ export async function placedQuestion(
   return { edit: made.edit, record: made.record };
 }
 
-// The shown words of the placed QUESTION (`question-1`) with the moment each
+// The ACCENT and the caption word fix the preview spec places on the fixture
+// clip: "test clip for the real studio" (w0005 to w0010) as `accent-1`, and
+// the caption of "is" (w0002) written as two words, "is so".
+const ACCENT = { from: "w0005", to: "w0010" } as const;
+const CAPTION_FIX = { word: "w0002", text: "is so" } as const;
+
+// `base`'s choices with the ACCENT as the only accent and the caption fix,
+// placed by the layout engine (`accent-1`).
+export async function withAccent(base: Edit, transcript: Transcript): Promise<Edit> {
+  const made = await placed(base, transcript, (choices) => ({
+    ...choices,
+    accents: [ACCENT],
+    word_fixes: [...choices.word_fixes, CAPTION_FIX],
+  }));
+  if (!made.edit.tracks.overlays.some((item) => item.id === "accent-1")) {
+    throw new Error(
+      `the ACCENT was not kept: ${JSON.stringify(made.record.filter((note) => note.item === "accent-1"))}`,
+    );
+  }
+  return made.edit;
+}
+
+// The shown words of a caption, an accent or a QUESTION with the moment each
 // appears, and its time on screen: what the builder draws.
+export function revealOf(
+  edit: Edit,
+  transcript: Transcript,
+  id: string,
+): { reveal: RevealWord[]; start: number; end: number } {
+  const item =
+    edit.tracks.overlays.find((overlay) => overlay.id === id) ??
+    edit.tracks.captions.find((caption) => caption.id === id);
+  if (!item?.words) throw new Error(`the version has no spoken text ${id}`);
+  const span = resolveTimeline(edit, transcript).get(item.id)!;
+  const byId = new Map(transcript.words.map((word) => [word.id, word]));
+  const written = item.text ?? wordsText(item.words, transcript, ISSEBYA_PRESET);
+  const reveal = wordReveal(
+    id.startsWith("question-") ? questionText(written) : written,
+    item.words.map((word) => byId.get(word)!),
+    span,
+  );
+  return { reveal, start: span.start, end: span.end };
+}
+
+// The same for the placed QUESTION (`question-1`).
 export function questionOf(
   edit: Edit,
   transcript: Transcript,
 ): { reveal: RevealWord[]; start: number; end: number } {
-  const overlay = edit.tracks.overlays.find((item) => item.id === "question-1");
-  if (!overlay?.words) throw new Error("the version has no question");
-  const span = resolveTimeline(edit, transcript).get(overlay.id)!;
-  const byId = new Map(transcript.words.map((word) => [word.id, word]));
-  const reveal = questionReveal(
-    questionText(wordsText(overlay.words, transcript, ISSEBYA_PRESET)),
-    overlay.words.map((id) => byId.get(id)!),
-    span,
-  );
-  return { reveal, start: span.start, end: span.end };
+  return revealOf(edit, transcript, "question-1");
 }

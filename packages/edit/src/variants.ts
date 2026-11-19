@@ -1,6 +1,7 @@
 import type { FontRole } from "./font-pairs.ts";
 import type { EngineComponent } from "./engine-note.ts";
 import type { ZoneName } from "./engine-zones.ts";
+import type { SoundKey } from "./preset.ts";
 
 // The variant entries (`specs/layout-engine.md`, "Variants as data" and
 // "Writing a variant"): what the engine cannot compute, as data. No pixel
@@ -33,6 +34,9 @@ interface Common {
   zones: Zones;
   timing: Timing;
   hides: boolean; // its words leave the captions while it shows
+  // The sound its cue plays as it comes in (`cueSound`, `clicks.ts`): one of
+  // the preset's sounds by name. An entry without it plays the cue's own.
+  sound?: SoundKey;
 }
 
 // A text style: a font role, a colour and a base size (owner decision
@@ -58,8 +62,9 @@ export const STYLES = {
   accent: { font: "artistic", color: WHITE, base: 110 },
   // Captions and a list's lead-in.
   caption: { font: "simple", color: WHITE, base: 50 },
-  // The big word behind the speaker: as large as its zone allows.
-  bigWord: { font: "simple", color: WHITE, base: "largest-fit" },
+  // The big word behind the speaker: as large as its zone allows, in the
+  // accent face.
+  bigWord: { font: "artistic", color: WHITE, base: "largest-fit" },
 } satisfies Record<string, TextStyle>;
 
 // A text: its style (font, colour, base size). Text is `front` or `behind`.
@@ -177,17 +182,21 @@ export const VARIANTS = {
     zones: ["head-top"],
     timing: { option: "words-lead", lead: 0.2, minimum: 1.5 },
     hides: true,
+    // A pop as the big word comes in.
+    sound: "pop",
   },
   "visual/card": {
     component: "VISUAL",
     variant: "visual/card",
     layer: "front",
     type: "box",
-    style: { stroke: { color: WHITE, px: 8 } },
+    style: { stroke: { color: WHITE, px: 2 } },
     zones: ["corner", "beside-face"],
     timing: { option: "words-min-max", minimum: 1, maximum: 2 },
     hides: false,
     width: "1/3",
+    // A pop as the card comes in.
+    sound: "pop",
   },
   "list/numbered": {
     component: "LIST",

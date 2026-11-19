@@ -1,4 +1,10 @@
-import { type Edit, type Preset, type Transcript, resolveTimeline } from "@edit-issebya/edit";
+import {
+  type Edit,
+  type Preset,
+  type Transcript,
+  cueSound,
+  resolveTimeline,
+} from "@edit-issebya/edit";
 
 // One hit of a sound on the edit's sound track, in reel seconds.
 export interface SoundHit {
@@ -19,11 +25,12 @@ export interface SoundStart {
 
 // Every sound item of the edit, its start resolved through the transcript the
 // way the builder resolves it, its file and length from the preset (clamped to
-// the reel's end, as the builder writes data-duration).
+// the reel's end, as the builder writes data-duration). The sound is the one
+// the builder plays (`cueSound`: a visual's cue and a big word's are the pop).
 export function soundHits(edit: Edit, transcript: Transcript, preset: Preset): SoundHit[] {
   const resolved = resolveTimeline(edit, transcript);
   return edit.tracks.sounds.map((item) => {
-    const sound = preset.sounds[item.sound];
+    const sound = preset.sounds[cueSound(item, edit.tracks.behind)];
     const span = resolved.get(item.id);
     if (!span) throw new Error(`sound ${item.id} not resolved`);
     return {

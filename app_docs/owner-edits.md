@@ -195,7 +195,8 @@ your library`). The card then shows the photo (`photo: { id, width, height }`, i
   photo's (cut at a word to 120 characters), its box the photo's aspect at its width (100 px to the
   frame's width). It gets a click as it comes in (`click-owner-visual-N`, on its start anchor) only
   when no other sound starts within the click's gap (0.25 s, `minGapSeconds`) of it, so the
-  `sound-gap` check holds. Refused with reasons: an id already in the edit, a photo not in
+  `sound-gap` check holds. That cue plays the pop, like
+  every visual's (`cueSound`, `app_docs/edit-model.md`). Refused with reasons: an id already in the edit, a photo not in
   `photos`, a word with no span, a width outside its range.
 - `ownerAddWord(transcript, seconds)`: the word under the playhead (spoken then); in a pause between
   words the last one spoken before it, so the card is on screen at the paused moment (with aligned
@@ -244,7 +245,9 @@ your library`). The card then shows the photo (`photo: { id, width, height }`, i
   sets a question's lines by moving its own word elements between lines (a space between two words,
   a line break between two lines), never by writing its html anew, which would leave words the
   timeline never shows. A move or a corner resize writes the question's own element only; its words
-  follow it. So the text is where it was dropped on the very next frame, and the rebuilt page swaps in
+  follow it. An accent's and a caption's
+  words are elements of their own too (`<item>_wK`; `app_docs/edit-model.md`, "The word-by-word
+  entrance"), read and set the same way. So the text is where it was dropped on the very next frame, and the rebuilt page swaps in
   later with nothing moving. A patch never writes what the page's timeline animates (`transform`,
   `opacity`, `visibility`, `display`), so the moment on screen stays the timeline's. A drop that
   changes nothing or is refused drops the patch, and Cancel restyles the page back the same way.
@@ -628,7 +631,7 @@ like decide does (`E2E_MOCK_MASK` in specs).
   size with the same words shown (its own word elements moved onto the lines), kept at the drop and
   after the swap. Save queues its move with a wrap width, the worker saves it, the saved version
   draws it at the owner's place on the owner's lines and still builds it up word by word as it is
-  spoken (`questionShownAt` at the middle of each word), the mark only with the last word; the
+  spoken (`revealShownAt` at the middle of each word), the mark only with the last word; the
   learning row is `QUESTION`, `question/word-by-word`, its text with the mark, moved and resized,
   with its wrap width. With `OWNER_EDIT_SHOTS` it keeps `question-1-selected.png`,
   `question-2-edge-held.png` and `question-3-saved-revealed.png`.

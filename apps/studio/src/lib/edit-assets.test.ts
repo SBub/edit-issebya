@@ -6,7 +6,10 @@ describe("EDIT_ASSET_FILES", () => {
   it("is exactly the preset's fonts and sounds and the stand-in pictures, with their types", () => {
     expect(Object.fromEntries(EDIT_ASSET_FILES)).toEqual({
       ...Object.fromEntries(allFontFiles().map((file) => [file, "font/ttf"])),
-      [ISSEBYA_PRESET.sounds.click.file]: "audio/wav",
+      "assets/sounds/mouse-click-trimmed.wav": "audio/wav",
+      "assets/sounds/camera-shutter.wav": "audio/wav",
+      "assets/sounds/whoosh.wav": "audio/wav",
+      "assets/sounds/pop.wav": "audio/wav",
       ...Object.fromEntries(VISUAL_STAND_INS.map((image) => [image.file, "image/jpeg"])),
     });
   });

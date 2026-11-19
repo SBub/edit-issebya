@@ -4,7 +4,7 @@ import {
   type Edit,
   ISSEBYA_PRESET,
   parseEdit,
-  questionShownAt,
+  revealShownAt,
   transcriptSchema,
 } from "@edit-issebya/edit";
 import { e2eStorageRoot, fakeStorage } from "@edit-issebya/storage";
@@ -326,7 +326,7 @@ test("Save makes a version with the question moved and re-wrapped, still built u
     const next = reveal[index + 1]?.at ?? end - ISSEBYA_PRESET.caption.outSeconds;
     const t = (word.at + next) / 2;
     await seekOnRuler(page, t);
-    const shown = questionShownAt(reveal, t);
+    const shown = revealShownAt(reveal, t);
     await expect.poll(async () => (await drawn()).shown).toBe(shown);
     expect(shown.includes("?")).toBe(index === reveal.length - 1);
   }

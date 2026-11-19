@@ -63,9 +63,9 @@ describe("the components of a built page", () => {
     expect(byId(components, "big-word-1")).toMatchObject({
       component: "BIGWORD",
       x: 36,
-      y: 390,
-      size: 197,
-      height: 197,
+      y: 389,
+      size: 198,
+      height: 198,
     });
     expect(byId(components, "visual-1")).toMatchObject({ component: "VISUAL", size: null });
     expect(components.filter((component) => component.component === "CAPTION").length).toBe(

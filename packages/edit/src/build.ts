@@ -1,12 +1,14 @@
 import { type BigWordBox, maskSpans, placedBigWord, visualBox } from "./behind.ts";
 import { type Check, runChecks } from "./checks.ts";
+import { cueSound } from "./clicks.ts";
 import type { EngineNote } from "./engine-note.ts";
 import { type TextBox } from "./engine-space.ts";
 import type { HeadTrack } from "./head-track.ts";
 import { attrs, escapeHtml, px, sec, selector, volume } from "./html.ts";
 import type { Measurer } from "./measure.ts";
 import { textLines } from "./lines.ts";
-import { isQuestion, questionReveal, questionText } from "./question.ts";
+import { isQuestion, questionText } from "./question.ts";
+import { wordReveal } from "./reveal.ts";
 import { type Preset, wordsText } from "./preset.ts";
 import { FONT_ROLES, type FontPair, fontPairFiles } from "./font-pairs.ts";
 import { STYLES, VARIANTS } from "./variants.ts";
@@ -35,18 +37,19 @@ export function maskPath(mask: Pick<EditMask, "fingerprint">): string {
   return `masks/${mask.fingerprint}.mp4`;
 }
 
-// A VISUAL: an empty white stroke frame (transparent inside), a corner card of
-// the preset's stroke width.
+// A VISUAL: an empty white stroke frame (transparent inside) with rounded
+// corners (16 px), a corner card of the preset's stroke width.
 const visualStyle = (stroke: number) =>
-  `      .visual { position: absolute; box-sizing: border-box; border: ${stroke}px solid #ffffff; background: transparent; }`;
+  `      .visual { position: absolute; box-sizing: border-box; border: ${stroke}px solid #ffffff; background: transparent; border-radius: 16px; }`;
 
 // A VISUAL with its stand-in picture or library photo: the picture fills the card's box exactly
 // (the box has the picture's aspect, so nothing is cropped), and the stroke is
-// drawn over it as the card's own frame.
+// drawn over it as the card's own frame. The card clips the picture to its
+// rounded corners.
 const visualPictureStyle = (stroke: number) => [
-  "      .visual-picture { position: absolute; box-sizing: border-box; }",
-  "      .visual-picture img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; }",
-  `      .visual-picture::after { content: ""; position: absolute; inset: 0; border: ${stroke}px solid #ffffff; box-sizing: border-box; }`,
+  "      .visual-picture { position: absolute; box-sizing: border-box; border-radius: 16px; overflow: hidden; }",
+  "      .visual-picture img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; border-radius: 16px; }",
+  `      .visual-picture::after { content: ""; position: absolute; inset: 0; border: ${stroke}px solid #ffffff; box-sizing: border-box; border-radius: 16px; }`,
 ];
 
 // The extra rules a page with a cut-out needs: the composite's groups and
@@ -58,14 +61,14 @@ const BEHIND_STYLE = [
   "      .mask-front { mix-blend-mode: multiply; }",
 ];
 
-// A QUESTION's words, each hidden until its own moment; only on a page with
-// one. Its lines are left-aligned (the span's default), a block of text.
-const QUESTION_STYLE = "      .q { opacity: 0; }";
+// The words of a text that builds up word by word (a caption, an accent, a
+// QUESTION), each hidden until its own moment; only on a page with one.
+const REVEAL_STYLE = "      .q { opacity: 0; }";
 
-// How long a question's word takes to appear: a hard cut, like typing. Not
+// How long a revealed word takes to appear: a hard cut, like typing. Not
 // zero: HyperFrames reuses a still frame only between a timeline's keyframes,
 // and a tween is one.
-const QUESTION_WORD_SECONDS = 0.001;
+const REVEAL_WORD_SECONDS = 0.001;
 
 // A big word's class, on any page with one.
 const WORD_STYLE = "      .word { position: absolute; line-height: 1; white-space: nowrap; }";
@@ -216,7 +219,7 @@ export function build(
       : []),
     // The written hook's own class (its lines centred); only on a page with one.
     ...(boxes.some((box) => box.kind === "hook") ? ["      .hook { text-align: center; }"] : []),
-    ...(boxes.some((box) => box.question) ? [QUESTION_STYLE] : []),
+    ...(boxes.some((box) => box.words) ? [REVEAL_STYLE] : []),
   ];
 
   const body: string[] = [];
@@ -422,16 +425,20 @@ export function build(
       `top: ${px(box.y)}px`,
       `font-size: ${px(box.size)}px`,
       `color: ${box.color}`,
-      ...(box.lines.length > 1 && box.kind !== "hook" && !box.question
+      // A hook's lines are centred by its class; a QUESTION's are left-aligned.
+      ...(box.lines.length > 1 &&
+      box.kind !== "hook" &&
+      !isQuestion({ id: box.itemId, kind: box.kind })
         ? ["text-align: center"]
         : []),
       ...(box.style ? [inlineStyle(box.style)] : []),
     ].join("; ");
-    if (box.question) {
-      // A QUESTION: every word is in its final place from the start (the lines
-      // never reflow) and hidden; each cuts in at its own spoken moment, the
-      // question mark with the last one. The whole text then stays until the
-      // question's end and leaves with the accent's fade.
+    if (box.words) {
+      // A caption, an accent or a QUESTION: every word is in its final place
+      // from the start (the lines never reflow) and hidden; each cuts in at
+      // its own spoken moment (a question's mark with its last word). The
+      // whole text then stays until its end and leaves with the caption's
+      // fade.
       const wordId = (index: number) => `${box.itemId}_w${index + 1}`;
       let index = 0;
       const lines = box.lines.map((line) =>
@@ -456,11 +463,11 @@ export function build(
       );
       const id = selector(box.itemId);
       js.push(
-        `tl.fromTo(${id}, { opacity: 0 }, { opacity: 1, duration: ${num(QUESTION_WORD_SECONDS)} }, ${num(box.start)});`,
+        `tl.fromTo(${id}, { opacity: 0 }, { opacity: 1, duration: ${num(REVEAL_WORD_SECONDS)} }, ${num(box.start)});`,
       );
-      for (const [at, word] of box.question.entries()) {
+      for (const [at, word] of box.words.entries()) {
         js.push(
-          `tl.fromTo(${selector(wordId(at))}, { opacity: 0 }, { opacity: 1, duration: ${num(QUESTION_WORD_SECONDS)} }, ${num(word.at)});`,
+          `tl.fromTo(${selector(wordId(at))}, { opacity: 0 }, { opacity: 1, duration: ${num(REVEAL_WORD_SECONDS)} }, ${num(word.at)});`,
         );
       }
       js.push(
@@ -475,6 +482,7 @@ export function build(
         ["style", css],
       ])}>${box.lines.map(escapeHtml).join("<br />")}</span>`,
     );
+    // The written hook, the one text nobody says: whole, with the rise.
     const id = selector(box.itemId);
     js.push(
       `tl.fromTo(${id}, { opacity: 0, y: ${caption.rise} }, { opacity: 1, y: 0, duration: ${num(caption.inSeconds)}, ease: "${caption.inEase}" }, ${num(box.start)});`,
@@ -484,7 +492,9 @@ export function build(
   body.push("      </div>");
 
   for (const item of drawsSound ? tracks.sounds : []) {
-    const sound = preset.sounds[item.sound];
+    // A visual's cue and a big word's play the pop (`cueSound`), whatever
+    // version stored it.
+    const sound = preset.sounds[cueSound(item, edit.tracks.behind)];
     const { start } = span(item.id);
     const length = Math.min(sound.durationSeconds, Math.max(edit.duration - start, 0));
     body.push(
@@ -658,9 +668,12 @@ function placedText(
       kind,
       text,
       lines,
-      ...(question
-        ? {
-            question: questionReveal(
+      // Every spoken text builds up word by word (its only
+      // entrance); the hook, which nobody says, comes in whole.
+      ...(kind === "hook"
+        ? {}
+        : {
+            words: wordReveal(
               text,
               (item.words ?? []).flatMap((id) => {
                 const word = byId.get(id);
@@ -668,8 +681,7 @@ function placedText(
               }),
               span,
             ),
-          }
-        : {}),
+          }),
       font,
       size,
       color: item.color ?? (kind === "caption" ? STYLES.caption.color : STYLES.accent.color),
@@ -709,7 +721,7 @@ function assetsOf(
   for (const file of fontPairFiles(pair)) {
     assets.push({ path: file, role: "font", ref: null });
   }
-  for (const key of new Set(edit.tracks.sounds.map((item) => item.sound))) {
+  for (const key of new Set(edit.tracks.sounds.map((item) => cueSound(item, edit.tracks.behind)))) {
     assets.push({ path: preset.sounds[key].file, role: "sound", ref: null });
   }
   // Each stand-in picture a visual shows, once.

@@ -49,6 +49,56 @@ describe("soundHits", () => {
     ]);
   });
 
+  it("plays a visual's cue as the pop, as the builder does", () => {
+    const edit = withClicks();
+    // The first click becomes the cue of a card that comes in on the same word.
+    edit.tracks.sounds[0]!.id = "click-visual-1";
+    edit.tracks.behind = [
+      {
+        id: "visual-1",
+        kind: "visual",
+        box: { x: 90, y: 300, width: 360, height: 460 },
+        start: { word: "w0002" },
+        end: { word: "w0002", offset: 0.2 },
+      },
+    ];
+    const hits = soundHits(edit, transcript, ISSEBYA_PRESET);
+    expect(hits[0]).toEqual({
+      id: "click-visual-1",
+      file: "assets/sounds/pop.wav",
+      at: 0.324,
+      gain: expect.closeTo(10 ** (-6 / 20), 10),
+      duration: 0.152,
+    });
+    // Any other sound stays the click.
+    expect(hits[1]?.file).toBe("assets/sounds/mouse-click-trimmed.wav");
+  });
+
+  it("plays a big word's cue as the pop, at the click's time and gain", () => {
+    const edit = withClicks();
+    const click = soundHits(edit, transcript, ISSEBYA_PRESET)[0]!;
+    // The first click becomes the cue of a big word that comes in on the same word.
+    edit.tracks.sounds[0]!.id = "click-big-word-1";
+    edit.tracks.behind = [
+      {
+        id: "big-word-1",
+        kind: "word",
+        text: "WORK",
+        start: { word: "w0002" },
+        end: { word: "w0002", offset: 0.2 },
+      },
+    ];
+    const hits = soundHits(edit, transcript, ISSEBYA_PRESET);
+    expect(hits[0]).toEqual({
+      id: "click-big-word-1",
+      file: "assets/sounds/pop.wav",
+      at: click.at,
+      gain: click.gain,
+      duration: 0.152,
+    });
+    expect(hits[1]?.file).toBe("assets/sounds/mouse-click-trimmed.wav");
+  });
+
   it("uses the item's own gain over the preset's", () => {
     const [hit] = soundHits(withClicks(-6), transcript, ISSEBYA_PRESET);
     expect(hit?.gain).toBeCloseTo(10 ** (-6 / 20), 10);

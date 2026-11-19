@@ -11,8 +11,8 @@ describe("fontPairOfRow", () => {
     expect(fontPairOfRow({ font_pair: "bold" })).toBe("bold");
   });
 
-  it("refuses a name outside the six, never guessing a pair", () => {
-    expect(() => fontPairOfRow({ font_pair: "primary" })).toThrow(/not one of the six/);
-    expect(() => fontPairOfRow({})).toThrow(/not one of the six/);
+  it("refuses a name outside the seven, never guessing a pair", () => {
+    expect(() => fontPairOfRow({ font_pair: "primary" })).toThrow(/not one of the seven/);
+    expect(() => fontPairOfRow({})).toThrow(/not one of the seven/);
   });
 });

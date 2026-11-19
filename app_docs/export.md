@@ -592,7 +592,7 @@ ffmpeg -f lavfi -i color=c=black:s=108x192:r=30:d=1 -f lavfi -i anullsrc=r=48000
   for the real studio?" (w0005 to w0010) placed by the layout engine. It is compared twice
   mid-reveal, in the two longest waits between two of its words (one word on screen, then five), and
   once at its end (the whole question with its mark, halfway from its last word to its out-fade); the
-  moments come from the version's own word times (`questionReveal`). Before each capture the spec
+  moments come from the version's own word times (`wordReveal`). Before each capture the spec
   reads the words on screen in the preview and expects exactly the words spoken so far. Its probe:
   the export's whole question against the preview with one word must score below the bound, so the
   comparison is proven to see which words are on screen. Measured 2026-11-16 (the composite): 0.995875
@@ -768,7 +768,10 @@ Before the one-screen layout (the 0.99 bound):
 - Never let `anon` execute `cancel_job`; only a `render` job can be cancelled.
 - The worker writes nothing after a cancel, except removing its own unrecorded upload through
   `discard_export_file`; never record an export for a cancelled job.
-- Sounds come only from the edit's sound track.
+- Sounds come only from the edit's sound track. The page names each item's file through `cueSound`
+  (`packages/edit`), so a VISUAL and a
+  big word come in with the pop in the export as in the preview, at the click's own time and gain
+  (`app_docs/edit-model.md`, "Preset values").
 - Never write an `exports` row from the studio; only the worker does.
 - Never turn the render double on unless `E2E_MOCK_RENDER` is exactly `"true"`.
 - Chrome's TMPDIR must stay short (socket path limit): never point it into the job scratch folder
