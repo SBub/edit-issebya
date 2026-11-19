@@ -1,9 +1,24 @@
 import type { BigWordBox } from "./behind.ts";
+import { boxAround, captionBlocks } from "./caption-blocks.ts";
 import { isQuestion } from "./question.ts";
 import type { EngineComponent } from "./engine-note.ts";
 import type { TextBox } from "./engine-space.ts";
 import type { Edit } from "./schema.ts";
-import type { Span } from "./timeline.ts";
+import type { ResolvedItem, Span } from "./timeline.ts";
+import type { Transcript } from "./transcript.ts";
+
+// One part of a component with its own box and time on screen: one group of a
+// caption block (the captions on screen together; its id is its first
+// caption's, `items` its captions' ids).
+export interface ComponentPart extends Span {
+  id: string;
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  items?: string[];
+}
 
 // One component as the builder drew it: its box in frame pixels (`x`, `y` the
 // top left corner) for its whole time on screen. A component has one box, not
@@ -24,6 +39,14 @@ export interface PlacedComponent extends Span {
   // A VISUAL's picture: its library photo's id, or its stand-in's file;
   // absent for an empty frame and for a text.
   picture?: string;
+  // A caption block (a sentence's captions, `caption-blocks.ts`): its groups,
+  // in time order. Only a block has parts: a single caption has none.
+  parts?: ComponentPart[];
+}
+
+// True for a caption block: the captions of one sentence as one component.
+export function isCaptionBlock(component: Pick<PlacedComponent, "component" | "parts">): boolean {
+  return component.component === "CAPTION" && component.parts !== undefined;
 }
 
 // Every component of a built page with its box: the builder's own text boxes
@@ -33,13 +56,16 @@ export interface PlacedComponent extends Span {
 // component: the box around its levels, its text the levels' in reading order
 // (the number, the lead-in, the key phrase). A QUESTION is read from its id
 // (`isQuestion`); its box and text are the ones its look draws, the question
-// mark included (`question.ts`).
+// mark included (`question.ts`). After the single captions come the caption
+// blocks (`captionBlocks`): each sentence's captions as one component, its box
+// the box around them for the sentence's whole time, its parts its groups.
 export function placedComponents(
   edit: Edit,
   boxes: readonly TextBox[],
   levels: readonly (TextBox & { transitionId: string })[],
   bigWords: readonly BigWordBox[],
-  resolved: ReadonlyMap<string, Span>,
+  resolved: ReadonlyMap<string, ResolvedItem>,
+  transcript: Transcript,
 ): PlacedComponent[] {
   const out: PlacedComponent[] = [];
   for (const box of boxes) {
@@ -62,6 +88,39 @@ export function placedComponents(
       y: box.y,
       width: box.width,
       height: box.height,
+    });
+  }
+  const captions = new Map(
+    boxes.flatMap((box) => (box.kind === "caption" ? [[box.itemId, box] as const] : [])),
+  );
+  for (const block of captionBlocks(edit, transcript, resolved)) {
+    const parts = block.groups.flatMap((group): ComponentPart[] => {
+      const own = group.captions.flatMap((id) => {
+        const box = captions.get(id);
+        return box ? [box] : [];
+      });
+      if (own.length === 0) return [];
+      return [
+        {
+          id: group.id,
+          text: own.map((box) => box.text).join(" "),
+          start: group.start,
+          end: group.end,
+          ...boxAround(own),
+          items: own.map((box) => box.itemId),
+        },
+      ];
+    });
+    if (parts.length === 0) continue;
+    out.push({
+      id: block.id,
+      component: "CAPTION",
+      text: parts.map((part) => part.text).join(" "),
+      size: captions.get(parts[0]!.id)!.size,
+      start: block.start,
+      end: block.end,
+      ...boxAround(parts),
+      parts,
     });
   }
   for (const item of edit.tracks.transitions) {

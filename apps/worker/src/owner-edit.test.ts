@@ -8,6 +8,7 @@ import {
   type StoredVersion,
   type Transcript,
   type VersionRows,
+  captionBlocks,
   parseEdit,
   transcriptSchema,
 } from "@edit-issebya/edit";
@@ -617,6 +618,65 @@ describe("runOwnerEdit", () => {
     expect(rows.size).toBe(saved);
   });
 
+  it("moves a caption block: every caption of the sentence, recorded as CAPTION against the engine's box", async () => {
+    const before = await editOf(placedId);
+    const block = captionBlocks(before, transcript)[0]!;
+    const own = new Set(block.groups.flatMap((group) => group.captions));
+    const first = before.tracks.captions.find((item) => item.id === block.groups[0]!.id)!;
+    const corner = {
+      x: Math.min(
+        ...before.tracks.captions
+          .filter((item) => own.has(item.id))
+          .map((item) => item.position!.x),
+      ),
+      y: first.position!.y,
+    };
+    await ownerEditRun({
+      versionId: placedId,
+      moves: [{ id: block.id, x: corner.x, y: corner.y - 100, size: first.size! }],
+    });
+    expect(rows.size).toBe(3);
+    const after = await editOf(current!);
+    for (const item of after.tracks.captions) {
+      const was = before.tracks.captions.find((entry) => entry.id === item.id)!;
+      if (!own.has(item.id)) {
+        expect(item).toEqual(was);
+        continue;
+      }
+      expect(item.position).toEqual({
+        x: was.position!.x,
+        y: was.position!.y - 100,
+        align: "left",
+      });
+      expect({ ...item, position: null }).toEqual({ ...was, position: null });
+    }
+    expect(after.tracks.overlays).toEqual(before.tracks.overlays);
+    const { owner_moves: records } = rows.get(current!)!;
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      item: block.id,
+      component: "CAPTION",
+      variant: "caption/default",
+      engine_version_id: placedId,
+      engine: { x: corner.x, y: corner.y, size: first.size },
+      owner: { x: corner.x, y: corner.y - 100, size: first.size },
+      moved: true,
+      resized: false,
+      wrap_width: null,
+    });
+    expect(records[0]!.context.others.some((other) => own.has(other.item))).toBe(false);
+    // The safe zone binds it like any text.
+    expect(
+      await refusal(
+        ownerEditRun({
+          versionId: placedId,
+          moves: [{ id: block.id, x: 0, y: corner.y, size: first.size! }],
+        }),
+      ),
+    ).toMatch(/runs past the safe zone/);
+    expect(rows.size).toBe(3);
+  });
+
   it("refuses a move that leaves the safe zone, writing no version", async () => {
     const reason = await refusal(
       ownerEditRun({ versionId: placedId, moves: [{ id: "accent-1", x: 0, y: 900, size: 110 }] }),
@@ -626,7 +686,7 @@ describe("runOwnerEdit", () => {
     expect(current).toBe(placedId);
   });
 
-  it("refuses a caption, an unknown component and a size under 30 px", async () => {
+  it("refuses a single caption, an unknown component and a size under 30 px", async () => {
     const caption = (await editOf(placedId)).tracks.captions[0]!.id;
     expect(
       await refusal(

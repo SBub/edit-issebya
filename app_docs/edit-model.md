@@ -220,7 +220,10 @@ item's id>`: a visual's, the engine's and an owner's added card's, and a big wor
 - `src/build.ts`: `build(edit, transcript, headTrack, preset, measurer, options) -> { html, assets, checks, components }`.
   `components` is every component with its box on screen (`src/components.ts`, `placedComponents`,
   from the builder's own text boxes; the same list on every layer): the studio's move and resize
-  editor and the owner's learning records read it (`app_docs/owner-edits.md`).
+  editor and the owner's learning records read it (`app_docs/owner-edits.md`). After the single
+  captions it lists the caption blocks (`src/caption-blocks.ts`, `captionBlocks`): each spoken
+  sentence's captions as one component with `parts` (its groups), read back from the stored
+  captions the way the engine blocked them. The page's bytes are unchanged by it.
   `html` is a HyperFrames composition (`data-composition-id="main"`, a paused GSAP 3.14.2 timeline
   registered on `window.__timelines`); `assets` lists every referenced file with its role
   (`footage`, `font`, `sound`, `mask`, `visual`), sorted (a `sound` asset is each file a sound cue

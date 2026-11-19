@@ -21,6 +21,8 @@ const LABELS: Partial<Record<EngineComponent, string>> = {
   LIST: "List",
   HOOK: "Hook",
   VISUAL: "Visual",
+  // A sentence's captions, moved as one block.
+  CAPTION: "Captions",
 };
 
 export function componentLabel(component: EngineComponent): string {
@@ -37,8 +39,8 @@ export function movableComponents(components: readonly PlacedComponent[]): Place
 // The movable components on screen at `seconds` in the order the page stacks
 // them, bottom first: the cards in the `behind` track's order (a card the
 // owner added last is on top), then the texts, which the page draws above
-// the cards. The editor draws its boxes in this order, so the topmost box
-// takes a click where two overlap.
+// the cards, the caption blocks under the other texts. The editor draws its
+// boxes in this order, so the topmost box takes a click where two overlap.
 export function stackedAt(
   components: readonly PlacedComponent[],
   seconds: number,
@@ -46,9 +48,14 @@ export function stackedAt(
   const shown = components.filter(
     (component) => isMovable(component) && component.start <= seconds && seconds < component.end,
   );
+  // A caption block's box is a whole sentence's, so it goes under the other
+  // texts: a text inside it still takes its own click.
   return [
     ...shown.filter((component) => component.component === "VISUAL"),
-    ...shown.filter((component) => component.component !== "VISUAL"),
+    ...shown.filter((component) => component.component === "CAPTION"),
+    ...shown.filter(
+      (component) => component.component !== "VISUAL" && component.component !== "CAPTION",
+    ),
   ];
 }
 
@@ -192,7 +199,8 @@ export function turnOfPointer(
 const MIN_EDGE_PX = 20;
 
 // Whether a component's lines can be set again by its edge handles: every
-// text but a big word (one or two words that keep their lines). A VISUAL has
+// text but a big word (one or two words that keep their lines), a caption
+// block included (each of its groups is set again between whole captions). A VISUAL has
 // no lines: its corner handle scales it in proportion, and it has no edge
 // handles.
 export function canRewrap(component: Pick<PlacedComponent, "component">): boolean {

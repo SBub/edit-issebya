@@ -127,7 +127,14 @@ export {
   maskPath,
 } from "./build.ts";
 export { type EditPhoto, photoPath, withPhotoInputs } from "./photos.ts";
-export { type PlacedComponent } from "./components.ts";
+export { type ComponentPart, type PlacedComponent, isCaptionBlock } from "./components.ts";
+export {
+  type CaptionBlock,
+  type CaptionGroup,
+  CAPTION_BLOCK_PREFIX,
+  captionBlocks,
+  isCaptionBlockId,
+} from "./caption-blocks.ts";
 export {
   type OwnerAdd,
   OWNER_ADD_SECONDS,

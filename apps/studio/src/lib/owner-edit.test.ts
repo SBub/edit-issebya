@@ -49,11 +49,66 @@ const ALL = [
   component({}),
 ];
 
+// A caption block: a sentence's captions as one component, with its groups.
+const BLOCK = component({
+  id: "block_w0001",
+  component: "CAPTION",
+  text: "we test this",
+  size: 50,
+  start: 0,
+  end: 1,
+  parts: [
+    {
+      id: "w0001",
+      text: "we test this",
+      start: 0,
+      end: 1,
+      x: 300,
+      y: 400,
+      width: 440,
+      height: 110,
+    },
+  ],
+});
+
+describe("the editor's caption blocks", () => {
+  it("lists a sentence's captions as one block, never a single caption", () => {
+    const all = [...ALL, BLOCK];
+    expect(movableComponents(all).map((entry) => entry.id)).toContain("block_w0001");
+    expect(movableComponents(all).map((entry) => entry.id)).not.toContain("w0001");
+    // Under the other texts: a text inside the sentence's box takes its own click.
+    expect(stackedAt(all, 0.5).map((entry) => entry.id)).toEqual(["block_w0001", "hook"]);
+    expect(componentOption(BLOCK)).toBe("Captions: we test this");
+  });
+
+  it("moves, resizes and re-wraps a block like a text", () => {
+    expect(moveOfDrag(BLOCK, { mode: "move", dx: 10, dy: -20 })).toEqual({
+      id: "block_w0001",
+      x: 310,
+      y: 380,
+      size: 50,
+    });
+    expect(moveOfDrag(BLOCK, { mode: "resize", dx: 440, dy: 0 })).toEqual({
+      id: "block_w0001",
+      x: 300,
+      y: 400,
+      size: 100,
+    });
+    expect(moveOfDrag(BLOCK, { mode: "right", dx: -100, dy: 0 })).toEqual({
+      id: "block_w0001",
+      x: 300,
+      y: 400,
+      size: 50,
+      width: 340,
+    });
+  });
+});
+
 describe("the editor's components", () => {
   it("names each kind in plain words", () => {
     expect(
-      (["ACCENT", "QUESTION", "BIGWORD", "LIST", "HOOK"] as const).map(componentLabel),
-    ).toEqual(["Accent", "Question", "Big word", "List", "Hook"]);
+      (["ACCENT", "QUESTION", "BIGWORD", "LIST", "HOOK", "CAPTION"] as const).map(componentLabel),
+    ).toEqual(["Accent", "Question", "Big word", "List", "Hook", "Captions"]);
   });
 
   it("lists the texts and visuals the owner may move, in the order they come on screen", () => {
@@ -356,7 +411,9 @@ describe("an edge handle", () => {
     expect(canRewrap(component({ component: "HOOK" }))).toBe(true);
     expect(canRewrap(component({ component: "QUESTION" }))).toBe(true);
     expect(canRewrap(component({ component: "BIGWORD" }))).toBe(false);
+    // A single caption is no component of the editor; its sentence's block is.
     expect(canRewrap(component({ component: "CAPTION" }))).toBe(false);
+    expect(canRewrap(BLOCK)).toBe(true);
   });
 });
 

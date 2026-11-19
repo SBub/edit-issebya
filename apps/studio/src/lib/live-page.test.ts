@@ -65,12 +65,66 @@ const PAGE = new Map<string, PageElement>([
 
 describe("componentElements", () => {
   it("is a LIST's levels and any other component's own element", () => {
-    expect(componentElements(PAGE, "transition-1", "LIST")).toEqual([
+    expect(componentElements(PAGE, component({ id: "transition-1", component: "LIST" }))).toEqual([
       "transition-1-lead",
       "transition-1-key",
     ]);
-    expect(componentElements(PAGE, "accent-1", "ACCENT")).toEqual(["accent-1"]);
-    expect(componentElements(PAGE, "nothing", "ACCENT")).toEqual([]);
+    expect(componentElements(PAGE, component({}))).toEqual(["accent-1"]);
+    expect(componentElements(PAGE, component({ id: "nothing" }))).toEqual([]);
+  });
+
+  it("is a caption block's captions, each an element of its own", () => {
+    expect(componentElements(CAPTIONS, BLOCK)).toEqual(["cw1", "cw2", "cw3"]);
+  });
+});
+
+// A caption block as the builder draws it: a sentence's captions, each an
+// element of its own, two on the first line and one on the second (50 px, the
+// lines 14 px apart), centred in the block's width.
+const CAPTIONS = new Map<string, PageElement>([
+  ["cw1", el({ left: "400px", top: "1500px", "font-size": "50px" })],
+  ["cw2", el({ left: "520px", top: "1500px", "font-size": "50px" })],
+  ["cw3", el({ left: "450px", top: "1564px", "font-size": "50px" })],
+]);
+const BLOCK = component({
+  id: "block_cw1",
+  component: "CAPTION",
+  size: 50,
+  x: 400,
+  y: 1500,
+  width: 240,
+  height: 114,
+  parts: [
+    {
+      id: "cw1",
+      text: "we test this",
+      start: 4,
+      end: 6,
+      x: 400,
+      y: 1500,
+      width: 240,
+      height: 114,
+      items: ["cw1", "cw2", "cw3"],
+    },
+  ],
+});
+
+describe("dragPatch, a caption block", () => {
+  it("moves every caption of the sentence by the drag", () => {
+    expect(dragPatch(CAPTIONS, BLOCK, { mode: "move", dx: 30, dy: -200 })).toEqual({
+      cw1: { style: { left: "430px", top: "1300px" } },
+      cw2: { style: { left: "550px", top: "1300px" } },
+      cw3: { style: { left: "480px", top: "1364px" } },
+    });
+  });
+
+  it("scales the captions about the block's corner, the gap between its lines kept", () => {
+    // Twice the width: twice the size, the second line one size and one gap down.
+    expect(dragPatch(CAPTIONS, BLOCK, { mode: "resize", dx: 240, dy: 0 })).toEqual({
+      cw1: { style: { left: "400px", top: "1500px", "font-size": "100px" } },
+      cw2: { style: { left: "640px", top: "1500px", "font-size": "100px" } },
+      cw3: { style: { left: "500px", top: "1614px", "font-size": "100px" } },
+    });
   });
 });
 

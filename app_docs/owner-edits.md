@@ -34,6 +34,9 @@ picture here` open one picker of all the owner's ready library photos, newest fi
   library photo a version uses stays allowed, with a warning first that counts the versions.
 - Owner decisions, 2026-11-19 (the Edit mode):
   1. The button `Move text` is renamed `Edit`: the mode is for more than moving.
+  2. Caption blocks are selectable like the other texts: the owner moves and resizes a block (the
+     corner handle, and the edge handles as a text has them) for the whole time of that block, one
+     sentence's captions. The earlier rule "captions are not moved" is gone.
 
 ## Overview
 
@@ -50,7 +53,9 @@ stretches letters: the text keeps its size and is set again on more or fewer lin
 (not one per frame), so a move moves it for all of it. A VISUAL's box moves and scales: its picture
 and its time stay, and its height always follows its picture's aspect ratio, so a card is never
 stretched. A VISUAL also turns about its box's centre, by any angle in whole degrees; a text never
-turns. Captions are not moved. There is no delete and no timing change.
+turns. The captions of one spoken sentence are one block (`Captions`): the block moves, resizes
+and re-wraps as one box for the sentence's whole time, like any text; a single caption is never
+moved on its own. There is no delete and no timing change.
 
 A card's picture can be one of the owner's library photos (`app_docs/photo-library.md`): `Change
 picture` swaps a selected card's stand-in (or earlier photo) for one, and `Add picture here` adds a
@@ -77,6 +82,18 @@ with it at that moment. Placement rules will be learnt from these later.
   (`app_docs/edit-model.md`, "The question's look"): it builds up word by word, each word an element
   of its own, and ends with a question mark. Its box and `text` are the ones that look draws, the
   question mark included.
+- A caption block (`packages/edit/src/caption-blocks.ts`) is one more component, after the single
+  captions in `components`: `component` `CAPTION`, its id `block_<its first caption's id>` (an
+  underscore, which no item id holds, so a block is never taken for an item), its text the
+  sentence's captions joined, its `size` theirs, its box the box around them, its time from its
+  first caption's start to its last group's end, and `parts`: its groups (`ComponentPart`: the
+  captions on screen together, with the group's own box and time, `items` its captions' ids).
+  `isCaptionBlock` tells a block from a single caption (only a block has `parts`). The stored edit
+  holds no block: `captionBlocks(edit, transcript)` reads it back the way the engine made it
+  (`placeCaptions`): a group is a run of consecutive captions ending on the same moment, counted
+  over the captions that show and have a place (one a text shows in its place, `hidden_by`, takes
+  no room), and a block is the groups whose first caption's first word is in the same spoken
+  sentence (`sentenceSpans`).
 - A LIST is one component: the box around its levels (the number, the lead-in, the key phrase), its
   `size` its key phrase's. A VISUAL has no text size (`null`). A turned VISUAL's component also
   has `rotation` (whole degrees clockwise); its `x` to `height` stay its box upright.
@@ -105,6 +122,17 @@ with it at that moment. Placement rules will be learnt from these later.
     With a wrap width its lead-in and key phrase are each set again to it at their own sizes (the
     number keeps its line), and the levels are stacked again from the corner in their order on
     screen, each centred on the widest as the engine stacks them, the gaps the version's scaled.
+- A caption block's move is a text's move with the block's id (`movedBlock`). A move that only
+  moves carries every caption of the sentence with the box. A new size lays the block again from
+  the move's corner on its own lines, exactly as the engine lays a block (`layBlock`: the block as
+  wide as its widest line, every line centred in it, the lines `caption.lineGap` apart, each
+  caption after the ones before it on its line), every caption at the new size. A wrap width sets
+  each group again on the fewest balanced lines that fit it, between whole captions (`wrapGroup`;
+  a caption is never cut, so a caption wider than the width keeps its line). Its words, its text
+  and its times stay; the captions a text shows in their place are left as they are.
+  `ownerSizeRange` gives a block a text's range (30 to 400 px), `ownerWrapOptions` every width at
+  which one of its groups changes lines, and `settleOwnerMove` and `ownerMoveProblems` bind it to
+  the safe zone like any text.
 - A VISUAL's move is `OwnerBoxMove`, `{ id, kind: "box", x, y, width }`: its box's top left corner
   and its width in frame pixels. Its height is derived (`boxHeight`): the width times its stand-in
   picture's height over its width (`VISUAL_STAND_INS`; the box's own ratio for a VISUAL with no
@@ -122,7 +150,8 @@ with it at that moment. Placement rules will be learnt from these later.
 - A turned card covers the upright rectangle around it (`rotatedBounds`, `visualBounds` in
   `behind.ts`): the frame rule of a card (`ownerMoveProblems`, `settleOwnerMove`) and the
   `card-overlap` check read that rectangle, never the upright box.
-- It refuses, with reasons: an id that is no text component of the edit (a caption is not moved), a
+- It refuses, with reasons: an id that is no text component of the edit (a single caption is not
+  moved, only its block; a block id that names no block: `not a caption block of this version`), a
   size outside the component's range (`ownerSizeRange`), a component moved twice, a wrap width on a
   big word (`a big word keeps its lines`) or one that is no positive number; a text's move on a
   VISUAL (`a visual moves as a box`), a box move on anything but a VISUAL (`not a visual of this
@@ -218,7 +247,8 @@ your library`). The card then shows the photo (`photo: { id, width, height }`, i
 
 ### The editor (`apps/studio`)
 
-- `isMovable` (`MOVABLE_COMPONENTS`): the five text kinds and `VISUAL`.
+- `isMovable` (`MOVABLE_COMPONENTS`): the five text kinds, `VISUAL` and a caption block (never a
+  single caption).
 - `src/components/ReelPreview.tsx` (`BuiltPreview`): the `Edit` button (`data-testid="edit-toggle"`,
   `aria-pressed`) in the player's control row, before `Zones`; desktop only (`lg:`), built for a
   mouse. It pauses the preview and shows the editor; Play is off while it is open; the ruler still
@@ -234,7 +264,9 @@ your library`). The card then shows the photo (`photo: { id, width, height }`, i
   pixels (snapped), and `ReelPreview` hands the player a patch: a move sets the component's
   elements' `left` and `top`, a corner resize scales their `font-size` (a VISUAL's `width` and
   `height`) and their corners about the box's top left corner (a LIST: its levels inside its layer,
-  never the layer; a turned card about the corner it shows at its top left), and a VISUAL's turn
+  never the layer; a caption block: each of its captions, a caption's line set at the new size
+  with the gap between lines kept, as the block is laid; a turned card about the corner it shows
+  at its top left), and a VISUAL's turn
   sets its element's `rotate` (`rotate: -30deg`). The player always restyles `rotate` too
   (`PATCHED` in `live-page.ts`), so a turn the patch set and neither page has is taken off again. An edge handle shows the lines the drop would give: once per press, a page is
   built with each of the component's wrap widths (`ownerWrapOptions`, then `applyOwnerMoves` and
@@ -265,11 +297,14 @@ your library`). The card then shows the photo (`photo: { id, width, height }`, i
   - A box (`move-box`, `data-component-id`, `data-component`) around each movable component on
     screen at the paused moment: dashed until selected. Clicking it selects it; the selected box
     (`data-selected`) shows its kind above it (`move-kind`: `Accent`, `Question`, `Big word`, `List`,
-    `Hook`, `Visual`), a corner handle (`move-handle`) at its bottom right and, for every text but a
+    `Hook`, `Visual`, `Captions`), a corner handle (`move-handle`) at its bottom right and, for every text but a
     big word (`canRewrap`; never a VISUAL), four edge handles (`move-edge`, `data-edge="left|right|top|bottom"`) at the
     middle of its edges. A VISUAL's box instead has a rotate handle (`move-rotate`, a round handle
     on a short stem above the middle of its top edge), and its kind shows below it. A turned card's
-    box turns with it (`rotate` on the box, `data-rotation` its degrees), handles included.
+    box turns with it (`rotate` on the box, `data-rotation` its degrees), handles included. A
+    caption block has one box for its sentence (`data-component="CAPTION"`,
+    `data-component-id="block_..."`), with the corner handle and the four edge handles; its single
+    captions have no box.
   - Dragging a box moves it; dragging the corner handle resizes it about its top left corner, in
     proportion (the text size; a VISUAL's width, its height following its picture). For a VISUAL
     `moveOfDrag` asks for its box (`{ kind: "box", x, y, width }`). A press that moves less than 3
@@ -318,8 +353,9 @@ here` (`move-add-picture`, in the bar while nothing is selected; off where `owne
     `photos`) and its large copy's signed URL from the library (`built.photoUrls`, by the path the
     page names it at), so the draft page shows the photo before anything is saved.
   - The boxes on screen are drawn in the page's stacking order (`stackedAt`: the cards in the
-    track's order, then the texts), so where two overlap the topmost box takes the click, the
-    added card over the engine's.
+    track's order, then the caption blocks, then the other texts), so where two overlap the
+    topmost box takes the click, the added card over the engine's, and a text inside a sentence's
+    box over that box.
   - Picking a text from the list selects it and seeks the preview to a moment where it shows whole
     (`showMoment`: 0.4 s before its end, or its middle when it is shorter than 0.8 s).
   - A status line at the bottom (`move-status`): `Saving your changes`, `This text does not fit
@@ -382,6 +418,9 @@ your changes`); `JOB_STEPS.owner_edit` is that one step.
   - `save_version` is replaced with the same signature, writing the four columns (absent keys give
     false and null; a JSON null engine box is stored as null). Its grants are restated: the
     service role only.
+- `supabase/migrations/20261119114356_owner_caption_moves.sql` (a new migration):
+  `owner_moves_component_check` accepts `CAPTION` (a caption block's row; its `item` is the
+  block's id). The grants are restated per role.
 - `apps/worker/src/job-kinds.ts`: `owner_edit` runs `runners.owner_edit` with the parsed payload
   (`parseOwnerEdit`: a version id, moves and optional adds, at least one in all); any other payload
   fails the job.
@@ -414,24 +453,24 @@ cards are refused: ...`). All of these are permanent failures, and no version is
 One row per component moved, resized, turned or swapped, and per card added, in one save, written by
 `save_version` with the version.
 
-| Column                                 | What it holds                                                                                                                                                                             |
-| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `owner_id`, `reel_id`                  | whose move, on which reel                                                                                                                                                                 |
-| `version_id`, `from_version_id`        | the owner's version, and the version the owner edited                                                                                                                                     |
-| `engine_version_id`                    | the engine-placed version the engine's box was read from                                                                                                                                  |
-| `item`, `component`, `variant`, `text` | the item id, `ACCENT`, `QUESTION`, `BIGWORD`, `LIST`, `HOOK` or `VISUAL`, the variant entry the engine placed it with (`accent/above-head`), its text (a VISUAL's description)            |
-| `start_seconds`, `end_seconds`         | its time on screen                                                                                                                                                                        |
-| `engine_box`                           | where the engine placed it: `{ x, y, width, height, size }`; null for a card the owner added                                                                                              |
-| `owner_box`                            | where the owner put it, the same shape                                                                                                                                                    |
-| `moved`, `resized`                     | which of the two differs: a new corner is a move; a new size, or a box of another width or height (its lines set again), a resize                                                         |
-| `rotated`                              | a VISUAL turned: its turn differs from the engine's                                                                                                                                       |
-| `engine_rotation`, `owner_rotation`    | the engine's turn (always 0: the engine never turns a card) and the owner's, whole degrees clockwise (-179 to 180); 0 and 0 for a text. `engine_box` and `owner_box` are the card upright |
-| `added`                                | a card the owner added (`owner-visual-N`): no engine box, `moved`, `resized`, `rotated` and `swapped` false                                                                               |
-| `swapped`                              | a card whose picture differs from the engine's: the owner swapped it for a library photo                                                                                                  |
-| `photo_id`                             | the library photo the card shows (a plain id: the row outlives the photo); null for a text or a card without one                                                                          |
-| `replaced`                             | what a swap replaced: the picture of the version edited when it differs (the stand-in's file or the previous photo's id), else the engine's; null without a swap                          |
-| `wrap_width`                           | the wrap width an edge handle set, in frame pixels at the owner's size; null when the version's lines were kept                                                                           |
-| `context`                              | the moment (below)                                                                                                                                                                        |
+| Column                                 | What it holds                                                                                                                                                                                                                                                                                                              |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `owner_id`, `reel_id`                  | whose move, on which reel                                                                                                                                                                                                                                                                                                  |
+| `version_id`, `from_version_id`        | the owner's version, and the version the owner edited                                                                                                                                                                                                                                                                      |
+| `engine_version_id`                    | the engine-placed version the engine's box was read from                                                                                                                                                                                                                                                                   |
+| `item`, `component`, `variant`, `text` | the item id (a caption block's `block_<first caption>`), `ACCENT`, `QUESTION`, `BIGWORD`, `LIST`, `HOOK`, `VISUAL` or `CAPTION` (a caption block), the variant entry the engine placed it with (`accent/above-head`; a block's is its captions', `caption/default`), its text (a VISUAL's description; a block's sentence) |
+| `start_seconds`, `end_seconds`         | its time on screen                                                                                                                                                                                                                                                                                                         |
+| `engine_box`                           | where the engine placed it: `{ x, y, width, height, size }`; null for a card the owner added                                                                                                                                                                                                                               |
+| `owner_box`                            | where the owner put it, the same shape                                                                                                                                                                                                                                                                                     |
+| `moved`, `resized`                     | which of the two differs: a new corner is a move; a new size, or a box of another width or height (its lines set again), a resize                                                                                                                                                                                          |
+| `rotated`                              | a VISUAL turned: its turn differs from the engine's                                                                                                                                                                                                                                                                        |
+| `engine_rotation`, `owner_rotation`    | the engine's turn (always 0: the engine never turns a card) and the owner's, whole degrees clockwise (-179 to 180); 0 and 0 for a text. `engine_box` and `owner_box` are the card upright                                                                                                                                  |
+| `added`                                | a card the owner added (`owner-visual-N`): no engine box, `moved`, `resized`, `rotated` and `swapped` false                                                                                                                                                                                                                |
+| `swapped`                              | a card whose picture differs from the engine's: the owner swapped it for a library photo                                                                                                                                                                                                                                   |
+| `photo_id`                             | the library photo the card shows (a plain id: the row outlives the photo); null for a text or a card without one                                                                                                                                                                                                           |
+| `replaced`                             | what a swap replaced: the picture of the version edited when it differs (the stand-in's file or the previous photo's id), else the engine's; null without a swap                                                                                                                                                           |
+| `wrap_width`                           | the wrap width an edge handle set, in frame pixels at the owner's size; null when the version's lines were kept                                                                                                                                                                                                            |
+| `context`                              | the moment (below)                                                                                                                                                                                                                                                                                                         |
 
 `context` is `{ frame, font_pair, head, engine_zone, words, photo, others }`: the frame's size, the
 font pair, the head over the component's time (the box around the robust faces of the head track,
@@ -440,7 +479,9 @@ spoken while it shows (the transcript's, joined by spaces), the photo it shows a
 described it then (`{ description, tags }`, a snapshot quoted as data; null without a photo), and
 everything else on screen during its time (`{ item, component, text, start, end, box, rotation?,
 moved_by_owner }`, captions and cards included, each where the owner's version has it; `rotation`
-only for a turned card; an added card counts as moved by the owner).
+only for a turned card; an added card counts as moved by the owner). The captions are listed one
+by one where they are, never a block's box on top of them, and a block's own captions are left out
+of its record.
 
 Why a table, and why these keys:
 
@@ -653,6 +694,33 @@ moved, a resized and a widened component match between preview and export`: the 
   the bound, against the version before the moves at most 0.919066 mid-reel, and the turned card
   against the upright previews 0.94604 at its lowest (`app_docs/export.md`).
 
+- Caption blocks. `packages/edit/src/caption-blocks.test.ts` (unit): every shown caption in one
+  group of one block, each group ending on one moment, the blocks in time order; a block as a
+  component of the built page (its box around its captions, its parts); a block laid from its
+  corner on its stored lines exactly where the engine put its captions; a block moved (every
+  caption by the same amount, nothing else changed), resized about its corner on the same lines,
+  set on more lines by a narrower wrap width with its words and times kept, settled at the safe
+  zone's edge and named when it leaves it; a single caption and a block id that names none
+  refused; left out when it changes nothing, and recorded as `CAPTION` with the engine's box, the
+  captions' variant and zone, its own captions not among the others. `apps/worker/src/owner-edit.test.ts`:
+  a block moved, every caption of the sentence shifted and nothing else, recorded as `CAPTION`
+  against the engine's box, and refused past the safe zone. `apps/studio/src/lib/owner-edit.test.ts`:
+  a block listed as `Captions` (never a single caption), moved, resized and re-wrapped like a
+  text. `live-page.test.ts`: a block's elements are its captions, moved by a drag and scaled about
+  the block's corner with the gap between lines kept. `apps/studio/db-tests/owner-edits.test.ts`:
+  a `CAPTION` row saved, an unknown component refused.
+- `apps/studio/e2e/owner-edit-captions.spec.ts` (`yarn test:e2e`, the fixture clip with the
+  QUESTION, whose first four words show as the captions "this is a short"): the button reads
+  `Edit` and the list is named `Text or visual to edit`; the block is one line of the list
+  (`Captions: this is a short`), selected as `Captions` with a corner handle and four edge
+  handles, no box for a single caption; a drag moves all four captions on the pointer at every
+  step, at the drop straight after pointer up while the draft is `swapping`, and the same once
+  swapped in; the corner handle scales every caption while held, the block's corner kept; the
+  right edge handle held in by half sets the captions on more lines at the same size, kept at the
+  drop and after the swap. Save queues one move with the block's id and a wrap width, the worker
+  saves the version, the preview draws the captions where the owner left them, and the learning
+  row is `CAPTION`, `caption/default`, moved and resized, with both boxes and its wrap width. With
+  `OWNER_EDIT_SHOTS` it keeps `captions-1-selected.png` to `captions-4-saved.png`.
 - Pictures from the library. `packages/edit/src/owner-edit.test.ts`: a swap's `photo_id` parsed
   (another value and one on a text refused); the photo shown in place of the stand-in at its aspect
   ratio and named in `inputs.photos`, a photo not vouched for refused by `applyOwnerMoves` and
@@ -754,7 +822,10 @@ was deleted from the library`. Before the Delete, picking the `bold` font pair q
 - Never give an added card a click within the click's gap of another sound (`sound-gap`).
 - Never draw an added card under the cards already there: it goes to the end of the `behind` track,
   and the editor stacks its boxes in the page's order (`stackedAt`).
-- Never move a caption with this editor.
+- Never move a single caption with this editor: a sentence's captions move, resize and re-wrap as
+  one block, and a block is never cut inside a caption.
+- Never store a caption block: it is read back from the captions (`captionBlocks`) the way the
+  engine made it, so a version saved before blocks were movable has the same blocks.
 - Never render the editor or queue an `owner_edit` job for a user whose `studio-owner-edit` flag is
   off: the page and `requestOwnerEdit` both evaluate it on the server.
 
@@ -769,6 +840,9 @@ was deleted from the library`. Before the Delete, picking the `bold` font pair q
   text, deleting a card, timing changes (an added card always lasts 1.5 s), matching the picker's
   photos to the reel by their tags (it shows every ready photo), undo inside the editor (Cancel
   drops everything), and carrying the owner's moves into another font pair.
+- A caption block's time is its sentence's, and its box is the box around all its groups: at a
+  paused moment the box can be larger than the captions then on screen, when another group of the
+  sentence takes more lines.
 - A new version arriving while the editor is open (a job finishing) replaces the preview and closes
   the editor: the draft is lost. The moves are small, so this is accepted for now.
 - Other docs this change touches: `app_docs/change-requests.md` (the list's `Edited by you`),

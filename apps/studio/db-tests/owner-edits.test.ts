@@ -420,6 +420,36 @@ describe("save_version with the owner's edit", () => {
     expect(data).toEqual([]);
   });
 
+  it("saves a caption block's row: a sentence's captions moved as one box", async () => {
+    const reel = await insertReel(admin, { ownerId: userA.id, name: "d.mov", status: "processed" });
+    const base = await saveVersion(reel);
+    const id = randomUUID();
+    const block = {
+      ...moveRecord("block_cw0001", base, 400),
+      component: "CAPTION",
+      variant: "caption/default",
+      text: "this is a test clip",
+      resized: true,
+    };
+    const { error } = await admin.rpc("save_version", {
+      ...versionArgs(reel, id, base),
+      p_edited_from_id: base,
+      p_owner_moves: [block],
+    });
+    expect(error).toBeNull();
+    expect(await movesOf(id)).toEqual([
+      expect.objectContaining({
+        item: "block_cw0001",
+        component: "CAPTION",
+        variant: "caption/default",
+        text: "this is a test clip",
+        moved: true,
+        resized: true,
+        wrap_width: 400,
+      }),
+    ]);
+  });
+
   it("leaves every other version with no edited-from version and no learning row", async () => {
     const { data } = await admin
       .from("versions")
@@ -453,9 +483,9 @@ describe("save_version with the owner's edit", () => {
     const caption = await admin.rpc("save_version", {
       ...versionArgs(reelA, id, edited),
       p_edited_from_id: edited,
-      p_owner_moves: [{ ...moveRecord("w0001", versionA), component: "CAPTION" }],
+      p_owner_moves: [{ ...moveRecord("w0001", versionA), component: "FOOTAGE" }],
     });
-    expect(caption.error).not.toBeNull();
+    expect(caption.error?.message).toMatch(/owner_moves_component_check/);
     const overTurned = await admin.rpc("save_version", {
       ...versionArgs(reelA, id, edited),
       p_edited_from_id: edited,

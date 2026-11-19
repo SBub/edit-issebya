@@ -1,5 +1,5 @@
 import { build } from "./build.ts";
-import type { PlacedComponent } from "./components.ts";
+import { type PlacedComponent, isCaptionBlock } from "./components.ts";
 import { type Obstacle, placeElement } from "./engine-place.ts";
 import { SAFE_ZONE } from "./engine-zones.ts";
 import { type HeadTrack, facesOver } from "./head-track.ts";
@@ -313,7 +313,12 @@ export function ownerAddPlacement(
   const components = build(edit, transcript, headTrack, preset, measurer, {
     layer: "front",
   }).components.filter(
-    (component) => component.start < span.end - 1e-6 && span.start < component.end - 1e-6,
+    // Each caption is an obstacle where it is; a caption block's box (the
+    // editor's one box for a sentence) is not one more.
+    (component) =>
+      !isCaptionBlock(component) &&
+      component.start < span.end - 1e-6 &&
+      span.start < component.end - 1e-6,
   );
   const faces = facesOver(headTrack, span.start - 0.25, span.end + 0.25);
   const element = {

@@ -300,10 +300,12 @@ test("Edit opens the editor on the paused preview: a text picked from the list i
   await expect(page.getByTestId("move-save")).toBeDisabled();
   await expect(page.getByTestId("move-cancel")).toBeEnabled();
 
-  // The list holds the reel's text components, by kind: no caption.
+  // The list holds the reel's text components, by kind, in the order they come
+  // on screen: a sentence's captions as one block, never a single caption.
   const pick = page.getByTestId("move-pick");
   await expect(pick.locator("option")).toHaveText([
     "Pick a text or visual",
+    /^Captions: this is a short/,
     "Hook: A short test for the real s…",
     /^Accent: /,
   ]);

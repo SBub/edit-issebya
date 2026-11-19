@@ -620,7 +620,14 @@ export function build(
   const assets = assetsOf(edit, cues, masks, measurer.pair).filter((asset) =>
     layerNames(layer, asset.role),
   );
-  const components = placedComponents(edit, boxes, levels, [...bigWords.values()], resolved);
+  const components = placedComponents(
+    edit,
+    boxes,
+    levels,
+    [...bigWords.values()],
+    resolved,
+    transcript,
+  );
   return { html, assets, checks, components };
 }
 

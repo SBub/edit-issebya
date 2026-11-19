@@ -281,6 +281,17 @@ function balancer(
   };
 }
 
+// `length` items on `count` balanced lines (above), each line its first item
+// and the one past its last. The owner's rewrap of a caption block sets a
+// group's lines the same way the engine does (`caption-blocks.ts`).
+export function balancedCuts(
+  length: number,
+  lineWidth: (from: number, to: number) => number,
+  count: number,
+): [number, number][] {
+  return balancer(length, lineWidth)(Math.min(count, length));
+}
+
 // The lines of `words` on `count` lines, balanced (above). The owner's
 // rewrap (`owner-edit.ts`) sets a text's lines the same way.
 export function balancedLines(
