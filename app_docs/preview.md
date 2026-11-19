@@ -43,7 +43,7 @@ clicks through Web Audio. It is built and tested for Chrome.
   entry as `{ path: maskPath(mask), key }`, step `cutout`) and `photoIds` (`inputs.photos`, each a
   uuid); a version without them has none, and a malformed list fails the whole read.
 - `apps/studio/src/app/api/edit-assets/[...path]/route.ts` and `src/lib/edit-assets.ts`: serve the
-  every font pair's files and the preset's click sound from `packages/edit/assets/` (allow-list: `allFontFiles()` and the preset,
+  every font pair's files and the preset's sounds from `packages/edit/assets/` (allow-list: `allFontFiles()` and the preset,
   404 for anything else, immutable cache). `outputFileTracingIncludes` in `apps/studio/next.config.ts`
   traces the files into the server output.
 - `apps/studio/src/components/ReelPreview.tsx`: loads the sources, fetches the edit, transcript, head
@@ -201,7 +201,10 @@ jsdelivr.
 - One builder: never write a preview-only copy of the build logic. The transform only swaps asset
   URLs, adds `preload` and drops the sound clips.
 - The clock never advances while a video cannot play from the current point.
-- Sounds come only from the edit's sound track, never hard-coded.
+- Sounds come only from the edit's sound track, never hard-coded. Which sound an item plays is
+  `cueSound`'s answer (`packages/edit`), the same the builder writes for the export: a VISUAL's cue and a big word's play the pop
+  (`app_docs/edit-model.md`, "Preset values"); `sound-schedule.test.ts` checks it. The edit-assets
+  route serves every sound of the preset (the click, the shutter, the whoosh, the pop).
 - Never poll: read once, then follow Realtime.
 - Never store the built page.
 - Chrome only, but never block other browsers (show the note).

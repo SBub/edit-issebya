@@ -1,5 +1,6 @@
 import { type BigWordBox, maskSpans, placedBigWord, visualBox } from "./behind.ts";
 import { type Check, runChecks } from "./checks.ts";
+import { cueSound } from "./clicks.ts";
 import type { EngineNote } from "./engine-note.ts";
 import { type TextBox } from "./engine-space.ts";
 import type { HeadTrack } from "./head-track.ts";
@@ -491,7 +492,9 @@ export function build(
   body.push("      </div>");
 
   for (const item of drawsSound ? tracks.sounds : []) {
-    const sound = preset.sounds[item.sound];
+    // A visual's cue and a big word's play the pop (`cueSound`), whatever
+    // version stored it.
+    const sound = preset.sounds[cueSound(item, edit.tracks.behind)];
     const { start } = span(item.id);
     const length = Math.min(sound.durationSeconds, Math.max(edit.duration - start, 0));
     body.push(
@@ -718,7 +721,7 @@ function assetsOf(
   for (const file of fontPairFiles(pair)) {
     assets.push({ path: file, role: "font", ref: null });
   }
-  for (const key of new Set(edit.tracks.sounds.map((item) => item.sound))) {
+  for (const key of new Set(edit.tracks.sounds.map((item) => cueSound(item, edit.tracks.behind)))) {
     assets.push({ path: preset.sounds[key].file, role: "sound", ref: null });
   }
   // Each stand-in picture a visual shows, once.

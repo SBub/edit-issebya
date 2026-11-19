@@ -264,18 +264,34 @@ test("a new version rebuilds the preview live and its clicks are scheduled on th
   baseURL,
 }) => {
   await routePreviewCdn(page);
+  // Every sound file the preview asks the edit-assets route for.
+  const soundFiles: string[] = [];
+  page.on("request", (request) => {
+    const file = /\/edit-assets\/assets\/sounds\/([^/?]+)/.exec(request.url())?.[1];
+    if (file) soundFiles.push(file);
+  });
   await openReel(page, baseURL!);
   await page.evaluate(() => {
     (window as unknown as { __noReload: string }).__noReload = "marker";
   });
 
-  // Version 3: the current version plus two clicks on w0002 and w0005, its
-  // parent the current version.
+  // Version 3: the current version plus a click on w0002 and, on w0005, a
+  // VISUAL card with its cue (`click-visual-1`, stored as a click like every
+  // cue), its parent the current version.
   const transcript = await fixtureTranscript();
   const stored = await storage.get(reel!.versionKey);
   const json = JSON.parse(new TextDecoder().decode(stored!)) as {
-    tracks: { sounds: unknown[] };
+    tracks: { sounds: unknown[]; behind?: unknown[] };
   };
+  json.tracks.behind = [
+    {
+      id: "visual-1",
+      kind: "visual",
+      box: { x: 90, y: 300, width: 360, height: 460 },
+      start: { word: "w0005" },
+      end: { word: "w0008", edge: "end" },
+    },
+  ];
   json.tracks.sounds = [
     {
       id: "click-a",
@@ -284,10 +300,10 @@ test("a new version rebuilds the preview live and its clicks are scheduled on th
       end: { word: "w0002", offset: 0.2 },
     },
     {
-      id: "click-b",
+      id: "click-visual-1",
       sound: "click",
       start: { word: "w0005" },
-      end: { word: "w0005", offset: 0.2 },
+      end: { word: "w0008", edge: "end" },
     },
   ];
   const parsed = parseEdit(json, ISSEBYA_PRESET, transcript);
@@ -299,7 +315,7 @@ test("a new version rebuilds the preview live and its clicks are scheduled on th
     prefix: CACHE_PREFIX,
     reelId: reel!.reelId,
     edit,
-    changeSummary: "two clicks",
+    changeSummary: "a click and a card",
   });
   extraKeys.push(v3.key);
 
@@ -311,6 +327,11 @@ test("a new version rebuilds the preview live and its clicks are scheduled on th
   );
   // The clicks play through Web Audio only, never through the page's <audio>.
   await expect(composition(page).locator('audio[data-track-index="60"]')).toHaveCount(0);
+  // The card comes in with the pop, the other
+  // sound stays the click (app_docs/edit-model.md, "Preset values").
+  await expect
+    .poll(() => [...new Set(soundFiles)].sort())
+    .toEqual(["mouse-click-trimmed.wav", "pop.wav"]);
 
   await page.getByRole("button", { name: "Play" }).click();
   await expect
@@ -319,11 +340,13 @@ test("a new version rebuilds the preview live and its clicks are scheduled on th
     })
     .toBeGreaterThanOrEqual(2);
   const sounds = (await page.evaluate(() => window.__previewSounds))!;
-  // The first playback, from 0, scheduled both clicks.
+  // The first playback, from 0, scheduled both sounds, the pop as its card
+  // comes in.
   const { ctxTime, playhead } = sounds.playbacks[0]!;
   const resolved = resolveTimeline(edit, transcript);
   const starts = sounds.starts.slice(0, 2);
-  expect(starts.map((start) => start.id)).toEqual(["click-a", "click-b"]);
+  expect(starts.map((start) => start.id)).toEqual(["click-a", "click-visual-1"]);
+  expect(resolved.get("click-visual-1")!.start).toBe(resolved.get("visual-1")!.start);
   for (const start of starts) {
     const at = resolved.get(start.id)!.start;
     expect(Math.abs(start.when - (ctxTime - playhead) - at)).toBeLessThanOrEqual(0.01);

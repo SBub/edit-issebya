@@ -768,7 +768,10 @@ Before the one-screen layout (the 0.99 bound):
 - Never let `anon` execute `cancel_job`; only a `render` job can be cancelled.
 - The worker writes nothing after a cancel, except removing its own unrecorded upload through
   `discard_export_file`; never record an export for a cancelled job.
-- Sounds come only from the edit's sound track.
+- Sounds come only from the edit's sound track. The page names each item's file through `cueSound`
+  (`packages/edit`), so a VISUAL and a
+  big word come in with the pop in the export as in the preview, at the click's own time and gain
+  (`app_docs/edit-model.md`, "Preset values").
 - Never write an `exports` row from the studio; only the worker does.
 - Never turn the render double on unless `E2E_MOCK_RENDER` is exactly `"true"`.
 - Chrome's TMPDIR must stay short (socket path limit): never point it into the job scratch folder

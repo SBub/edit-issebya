@@ -158,6 +158,24 @@ and rule 6 (`engine-place.ts`).
   a stored click with no `gain_db` plays at it too, in the preview through
   `apps/studio/src/lib/sound-schedule.ts` and in the export through the page's `data-volume`, both from
   `gain_db ?? gainDb`), at least 0.25 s apart.
+- The sounds: `sounds` holds four brief sounds by name, `SoundKey` (`click`, `shutter`, `whoosh`,
+  `pop`): `shutter` `assets/sounds/camera-shutter.wav` 0.448 s, `whoosh` `assets/sounds/whoosh.wav`
+  0.47 s, `pop` `assets/sounds/pop.wav` 0.152 s, each -6 dB and 0.25 s apart like the click. All are real
+  recordings under CC0, mono, trimmed, with short fades; source, author, licence and changes are in
+  `assets/sounds/LICENSE-sounds.md`. Each file is levelled so that its loudest 100 ms has the click's
+  RMS (-22.8 dBFS), which is what makes sounds this short equally loud, so the one gain suits all four.
+- A variant entry may name one as its `sound` knob (`Common.sound`, `src/variants.ts`), typed
+  `SoundKey`: a name the preset does not have fails typecheck. Two entries have one, both `pop`
+  (owner request 2026-11-19): `visual/card` and `bigword/behind`, so
+  a VISUAL and a BIGWORD come in with a pop where they had the click. `cueSound(sound, behind)`
+  (`src/clicks.ts`) says which sound a sound item plays: the cue of a behind item (`click-<the
+item's id>`: a visual's, the engine's and an owner's added card's, and a big word's) plays its
+  entry's `sound`; any other item plays the sound it names. It is read at every build and never
+  stored: the sound track is written as before (`sound: "click"`, same id, same anchors, same gap,
+  the big word's cue still on its 0.2 s lead), so the timing and the -6 dB gain are unchanged and a
+  version saved before plays the pop too, with no new version. The builder (the full page and the
+  export's sound page, and the `assets` list) and the preview's schedule (`soundHits`) both call
+  it. `shutter` and `whoosh` stay in the set, cued by nothing yet.
 - Behind (`behind`): `padFrames` 3 and `frameRate` 30: the cut-out covers each big word that needs one plus 3 frames
   on each side. A big word needs it only where the head reaches it (`bigWordNeedsCutout`, the box's bottom
   below the highest robust face's top (`facesOver`, the faces the placer reads) over its padded span less
@@ -849,7 +867,14 @@ never fatal.
     it shows each placed as when alone, neither among the other's blockers, the card drawn under the text.
   - "clicks on visuals and big words": a click as each placed visual and big word comes in and
     nothing else (at `data-volume="0.5012"`, the -6 dB click), a visual the face leaves no spot off it
-    for still clicking, and a stored version's sounds left as they are.
+    for still clicking, and a stored version's sounds left as they are; the visual's cue and the big
+    word's built with the pop, the track saying `click` for both.
+- `src/clicks.test.ts`: the cues and their gap; `cueSound` (the pop for a visual's cue, for an
+  owner's added card's and for a big word's, an item that is no behind item's cue and a sound named
+  on the track kept); the four sounds, each under 0.5 s at -6 dB; the pop the visual entry's
+  `sound` and the big word entry's, and no other entry with one; a sound name the preset lacks
+  refused at compile time. `src/build.test.ts`: the pop on the full page and on the export's sound
+  page for both cues, the one sound file in `assets`, none on the front page.
   - "transitions": a transition shows exactly its phrase (in at its first word, out at its last word's
     end, no hold after a long pause), a short phrase keeps its words, the lead-in and
     the key phrase take the style roles inside their area, a face covered only where the face fills
@@ -1026,6 +1051,11 @@ never fatal.
 - Never hold a visual past its entry's maximum (2 s), or a big word past a second after its word
   (`afterSeconds`), in a new version; never refuse a stored version for an older, longer
   one.
+- A visual's cue and a big word's play the sound their entry names (`cueSound`; the pop for both): never
+  write that sound into the track, never change a cue's id, anchors or gap for it, and never read it
+  anywhere but through `cueSound`, or the preview and the export differ. Never add a sound that is
+  not a real recording under CC0 or in the public domain with its source, author and licence in
+  `assets/sounds/LICENSE-sounds.md`.
 - Never click on anything but a visual or a big word coming in, never off its start, and never two
   clicks closer than the sound's gap in a new version; never rewrite a stored version's sounds. A
   card the owner adds (`applyOwnerAdds`, `app_docs/owner-edits.md`) adds only its own click, and

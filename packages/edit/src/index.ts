@@ -95,6 +95,7 @@ export {
 } from "./engine-place.ts";
 export { pickVariants } from "./variant-picker.ts";
 export { type StandIn, VISUAL_STAND_INS } from "./variants.ts";
+export { cueSound } from "./clicks.ts";
 export {
   type Point,
   type SafeZone,

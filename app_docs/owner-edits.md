@@ -195,7 +195,8 @@ your library`). The card then shows the photo (`photo: { id, width, height }`, i
   photo's (cut at a word to 120 characters), its box the photo's aspect at its width (100 px to the
   frame's width). It gets a click as it comes in (`click-owner-visual-N`, on its start anchor) only
   when no other sound starts within the click's gap (0.25 s, `minGapSeconds`) of it, so the
-  `sound-gap` check holds. Refused with reasons: an id already in the edit, a photo not in
+  `sound-gap` check holds. That cue plays the pop, like
+  every visual's (`cueSound`, `app_docs/edit-model.md`). Refused with reasons: an id already in the edit, a photo not in
   `photos`, a word with no span, a width outside its range.
 - `ownerAddWord(transcript, seconds)`: the word under the playhead (spoken then); in a pause between
   words the last one spoken before it, so the card is on screen at the paused moment (with aligned

@@ -1314,6 +1314,11 @@ describe("clicks on visuals and big words", () => {
     // The big word's click on its lead, 0.2 s before its word.
     expect(spans.get("click-big-word-1")!.start).toBeCloseTo(byId.get("w116")!.start - 0.2, 3);
     expect(html).toMatch(/<audio id="click-visual-1" class="clip" [^>]*data-volume="0\.5012">/);
+    // The visual's cue and the big word's play the pop;
+    // the track itself says `click` for both.
+    expect(edit.tracks.sounds.map((sound) => sound.sound)).toEqual(["click", "click"]);
+    expect(html).toContain('<audio id="click-visual-1" class="clip" src="assets/sounds/pop.wav"');
+    expect(html).toContain('<audio id="click-big-word-1" class="clip" src="assets/sounds/pop.wav"');
   });
 
   it("clicks a visual the face leaves no spot off it for, and has no click without visuals or big words", async () => {

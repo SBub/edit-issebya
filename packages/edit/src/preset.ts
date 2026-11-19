@@ -16,8 +16,18 @@ export interface PresetTransition {
   ease: string;
 }
 
-export type SoundKey = "click";
-export const SOUND_KEYS = ["click"] as const satisfies readonly SoundKey[];
+// The brief sounds a version can play, by name: the files and levels are the
+// preset's (`sounds`). A variant names one as its `sound` knob (`variants.ts`),
+// so a name that is not here fails typecheck. `pop` is cued (a visual and a
+// big word); `click` is what the track stores and what any other item plays;
+// `shutter` and `whoosh` are data for later.
+export type SoundKey = "click" | "shutter" | "whoosh" | "pop";
+export const SOUND_KEYS = [
+  "click",
+  "shutter",
+  "whoosh",
+  "pop",
+] as const satisfies readonly SoundKey[];
 
 export interface PresetSound {
   file: string;
@@ -182,6 +192,27 @@ export const ISSEBYA_PRESET: Preset = {
     click: {
       file: "assets/sounds/mouse-click-trimmed.wav",
       durationSeconds: 0.23,
+      gainDb: -6,
+      minGapSeconds: 0.25,
+    },
+    // The other sounds (assets/sounds/LICENSE-sounds.md): each
+    // file is levelled so that its loudest 100 ms has the click's energy, so
+    // one gain gives all four the click's loudness under the voice.
+    shutter: {
+      file: "assets/sounds/camera-shutter.wav",
+      durationSeconds: 0.448,
+      gainDb: -6,
+      minGapSeconds: 0.25,
+    },
+    whoosh: {
+      file: "assets/sounds/whoosh.wav",
+      durationSeconds: 0.47,
+      gainDb: -6,
+      minGapSeconds: 0.25,
+    },
+    pop: {
+      file: "assets/sounds/pop.wav",
+      durationSeconds: 0.152,
       gainDb: -6,
       minGapSeconds: 0.25,
     },

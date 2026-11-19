@@ -29,6 +29,14 @@ describe("GET /api/edit-assets/[...path]", () => {
     expect(answer.headers.get("Content-Type")).toBe("audio/wav");
   });
 
+  it("serves the camera shutter, the whoosh and the pop as audio/wav", async () => {
+    for (const file of ["camera-shutter.wav", "whoosh.wav", "pop.wav"]) {
+      const answer = await get(["assets", "sounds", file]);
+      expect(answer.status, file).toBe(200);
+      expect(answer.headers.get("Content-Type"), file).toBe("audio/wav");
+    }
+  });
+
   it("answers 404 to a file the preset does not name", async () => {
     expect((await get(["assets", "fonts", "OFL-InterTight.txt"])).status).toBe(404);
     expect((await get(["package.json"])).status).toBe(404);

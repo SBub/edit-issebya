@@ -86,10 +86,39 @@ describe("build", () => {
     expect(html).toContain('data-composition-id="main"');
     expect(html).toContain("gsap.timeline({ paused: true })");
     expect(html).toContain('window.__timelines["main"] = tl;');
+    // A visual and a big word come in with the pop, at the preset's -6 dB.
     expect(html).toMatch(
-      /<audio id="click-visual-1" class="clip" src="assets\/sounds\/mouse-click-trimmed.wav" data-start="[\d.]+" data-duration="0.230" data-track-index="60" data-volume="0.5012"><\/audio>/,
+      /<audio id="click-visual-1" class="clip" src="assets\/sounds\/pop.wav" data-start="[\d.]+" data-duration="0.152" data-track-index="60" data-volume="0.5012"><\/audio>/,
     );
+    expect(html).toMatch(
+      /<audio id="click-big-word-1" class="clip" src="assets\/sounds\/pop.wav" data-start="[\d.]+" data-duration="0.152" data-track-index="60" data-volume="0.5012"><\/audio>/,
+    );
+    // The stored sound track still says `click` for both: nothing is rewritten.
+    expect(engine.edit.tracks.sounds.map((item) => [item.id, item.sound])).toEqual([
+      ["click-visual-1", "click"],
+      ["click-big-word-1", "click"],
+    ]);
     expect(html).toContain('<span id="accent-1" class="text f-artistic"');
+  });
+
+  it("plays the visual's pop and the big word's on the export's sound page, as on the full page", async () => {
+    const measurer = await nodeMeasurer();
+    const page = (layer: "full" | "sound" | "front") =>
+      build(engine.edit, engine.transcript, engine.headTrack, ISSEBYA_PRESET, measurer, { layer });
+    const cue = (html: string, id = "click-visual-1") =>
+      html.split("\n").find((line) => line.includes(`<audio id="${id}"`));
+    const sound = page("sound");
+    const full = page("full");
+    expect(cue(sound.html)).toContain('src="assets/sounds/pop.wav"');
+    expect(cue(sound.html)).toBe(cue(full.html));
+    expect(cue(sound.html, "click-big-word-1")).toContain('src="assets/sounds/pop.wav"');
+    expect(cue(sound.html, "click-big-word-1")).toBe(cue(full.html, "click-big-word-1"));
+    expect(
+      sound.assets.filter((asset) => asset.role === "sound").map((asset) => asset.path),
+    ).toEqual(["assets/sounds/pop.wav"]);
+    // No picture page names a sound.
+    expect(cue(page("front").html)).toBeUndefined();
+    expect(cue(page("front").html, "click-big-word-1")).toBeUndefined();
   });
 
   it("lists every referenced file with its role, sorted", async () => {
@@ -104,7 +133,7 @@ describe("build", () => {
     expect(assets.map((asset) => [asset.path, asset.role])).toEqual([
       ["assets/fonts/InterTight-SemiBold.ttf", "font"],
       ["assets/fonts/PlayfairDisplay-Italic.ttf", "font"],
-      ["assets/sounds/mouse-click-trimmed.wav", "sound"],
+      ["assets/sounds/pop.wav", "sound"],
       ["assets/visuals/visual-1.jpg", "visual"],
       [`masks/${"3".repeat(64)}.mp4`, "mask"],
       ["source.mp4", "footage"],
