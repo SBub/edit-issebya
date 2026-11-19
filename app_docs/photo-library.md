@@ -132,7 +132,10 @@ one (`app_docs/owner-edits.md`). The decide step reads no library yet.
   picker of every ready photo with a large copy and a size, newest first (`PicturePicker`,
   `pickablePhotos`; the library's `loadLibrary`), and the editor's draft shows the photo from the
   library's signed large copy (`app_docs/owner-edits.md`). The decide step reads no library: its
-  components prompt gets no photo and its answer names none (`app_docs/decide-step.md`). The live
+  components prompt gets no photo and its answer names none (`app_docs/decide-step.md`). A font pair
+  change keeps the photos a version shows (the relayout places each card again with its photo and
+  keeps an added card; `app_docs/font-pairs.md`), and `inputs.photos` of every new version is
+  written from what its VISUALs show, never copied from the version before. The live
   preview signs each shown photo's `large_key` read from its own row under RLS
   (`app_docs/preview.md`), and the render downloads the same large copy into its project
   (`app_docs/export.md`); the composite's front layer names it like a stand-in.
@@ -256,6 +259,9 @@ only, run by hand; CI uses the committed files).
   that show it (`photoUsage`), then delete it on `Yes, delete`; the versions stay as they are.
 - Never take a photo's size or owner from the browser when a version shows it: the worker reads its
   row (`readyPhotos`).
+- Never copy `inputs.photos` from one version to the next: each new version names the photos its
+  own VISUALs show (`withPhotoInputs`, `editFromAnswer`), and a font pair change keeps the photos
+  (`app_docs/font-pairs.md`).
 - Quote a photo's description and tags as data in any later prompt, never as instructions.
 - Never put the describe prompt's text in the repository: change it in PostHog (a new version, moved to
   the label); the photo row records the identity the worker fetched (AGENTS.md).

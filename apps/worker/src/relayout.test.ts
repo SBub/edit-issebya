@@ -22,7 +22,9 @@ import {
   aiRecordKey,
   writeAiRecord,
 } from "./decide/ai-record.ts";
+import { type OwnerEdit, runOwnerEdit } from "./owner-edit.ts";
 import { answerOfRecord, runRelayout } from "./relayout.ts";
+import { runRestore } from "./restore-step.ts";
 import { PermanentError, findCause, isTransient } from "./failure.ts";
 import { cacheKey } from "./pipeline/fingerprint.ts";
 import { TEST_JOB, recordingSteps, stepContext } from "./recording-steps.ts";
@@ -34,6 +36,15 @@ const PREFIX = "dev/";
 const FIXTURES = new URL("../../../fixtures/pipeline/", import.meta.url);
 const ANSWER = new URL("./decide/testdata/short-speech-answer.json", import.meta.url);
 const REEL = TEST_JOB.reel_id;
+// A ready library photo of the owner's, as the worker reads it (16:9).
+const PHOTO = {
+  id: "8b0c2d7e-4b8f-4a51-9f0c-2d1e3f4a5b6c",
+  description: "a bright kitchen with a laptop on the table",
+  tags: ["kitchen", "laptop"],
+  large_key: "dev/library/kitchen/large.jpg",
+  width: 1600,
+  height: 900,
+};
 
 let root: string;
 let scratch: string;
@@ -230,6 +241,174 @@ describe("runRelayout", () => {
     expect(isTransient(failed)).toBe(false);
     expect(String(findCause(failed, PermanentError)?.message)).toMatch(/is not JSON/);
     expect(rows.size).toBe(1);
+  });
+});
+
+// A font pair change on a version that shows library photos: a picture does
+// not depend on the font, so the owner's photos stay.
+describe("runRelayout with the owner's library photos", () => {
+  const deps = () => ({
+    ctx: stepContext(recordingSteps().steps),
+    storage,
+    rows: memoryRows(),
+    blobs: storageVersionBlobs(storage),
+    keyPrefix: PREFIX,
+    scratchDir: scratch,
+    tools: toolPaths(),
+    newId,
+  });
+  const ownerEditRun = (ownerEdit: OwnerEdit) =>
+    runOwnerEdit({
+      ...deps(),
+      ownerEdit,
+      photos: {
+        async readyPhotos(_owner, photoIds) {
+          return new Map(photoIds.includes(PHOTO.id) ? [[PHOTO.id, PHOTO]] : []);
+        },
+      },
+    });
+  const editOf = async (id: string) => {
+    const parsed = await storedEdit(rows.get(id)!);
+    if (!parsed.ok) throw new Error(parsed.reasons.join("; "));
+    return parsed.edit;
+  };
+  const visualOf = async (versionId: string, id: string) => {
+    const item = (await editOf(versionId)).tracks.behind?.find((entry) => entry.id === id);
+    if (item?.kind !== "visual") throw new Error(`no visual ${id} in ${versionId}`);
+    return item;
+  };
+
+  // Version 2: the committed hook and one VISUAL over the sentence, placed by
+  // the engine in the classic pair (the card shows a stand-in).
+  async function placeVisualVersion(): Promise<string> {
+    const hook = replies.find((reply) => reply.role === "hook")!;
+    const decide = replies.find((reply) => reply.role !== "hook")!;
+    const call = (role: "hook" | "decide", answer: unknown) =>
+      ({ attempt: 1, role, answerText: JSON.stringify(answer) }) as unknown as AiRecordCall;
+    await writeAiRecord(storage, PREFIX, {
+      format: 1,
+      reel_id: REEL,
+      version_id: firstId,
+      prompt_version: "reel-components@v1",
+      hook_prompt_version: "reel-hook@v1",
+      calls: [
+        call("hook", hook.answer),
+        call("decide", {
+          ...(decide.answer as Record<string, unknown>),
+          accents: [],
+          lists: [],
+          visuals: [{ from: "w0001", to: "w0010", description: "a messy desk at night" }],
+        }),
+      ],
+    });
+    await relayoutRun("classic");
+    return current!;
+  }
+
+  // The engine's card of `versionId` swapped for the library photo, in place.
+  async function swapPicture(versionId: string): Promise<string> {
+    const card = await visualOf(versionId, "visual-1");
+    await ownerEditRun({
+      versionId,
+      moves: [
+        {
+          id: card.id,
+          kind: "box",
+          x: card.box.x,
+          y: card.box.y,
+          width: card.box.width,
+          photo_id: PHOTO.id,
+        },
+      ],
+    });
+    return current!;
+  }
+
+  it("places a card the owner gave a library photo again with that photo, at the photo's aspect", async () => {
+    const swapped = await swapPicture(await placeVisualVersion());
+    expect((await editOf(swapped)).inputs.photos).toEqual([PHOTO.id]);
+
+    await relayoutRun("bold");
+
+    const saved = rows.get(current!)!;
+    expect(saved).toMatchObject({ number: 4, parent_id: swapped });
+    expect(saved.inputs.photos).toEqual([PHOTO.id]);
+    const edit = await editOf(saved.id);
+    expect(edit.font_pair).toBe("bold");
+    expect(edit.inputs.photos).toEqual([PHOTO.id]);
+    const card = await visualOf(saved.id, "visual-1");
+    expect(card.photo).toEqual({ id: PHOTO.id, width: 1600, height: 900 });
+    expect("image" in card).toBe(false);
+    expect(card.description).toBe("a messy desk at night");
+    // The engine placed it for the photo, not for the stand-in it replaced.
+    expect(Math.abs(card.box.height - (card.box.width * 900) / 1600)).toBeLessThanOrEqual(1);
+    expect(saved.checks).toEqual([]);
+    // The version it was laid out from still shows the photo too.
+    expect((await visualOf(swapped, "visual-1")).photo?.id).toBe(PHOTO.id);
+  });
+
+  it("keeps the photo through a second font pair change", async () => {
+    await swapPicture(await placeVisualVersion());
+    await relayoutRun("bold");
+    await relayoutRun("retro");
+    const edit = await editOf(current!);
+    expect(edit.font_pair).toBe("retro");
+    expect(edit.inputs.photos).toEqual([PHOTO.id]);
+    expect((await visualOf(current!, "visual-1")).photo?.id).toBe(PHOTO.id);
+  });
+
+  it("keeps a card the owner added as it was, on top of the engine's cards, with its click", async () => {
+    const withVisual = await placeVisualVersion();
+    await ownerEditRun({
+      versionId: withVisual,
+      moves: [],
+      adds: [
+        { id: "owner-visual-1", photo_id: PHOTO.id, word: "w0004", x: 600, y: 300, width: 360 },
+      ],
+    });
+    const added = await visualOf(current!, "owner-visual-1");
+
+    await relayoutRun("script");
+
+    const edit = await editOf(current!);
+    expect(edit.font_pair).toBe("script");
+    expect(edit.tracks.behind!.map((item) => item.id)).toEqual(["visual-1", "owner-visual-1"]);
+    expect(await visualOf(current!, "owner-visual-1")).toEqual(added);
+    // The engine's own card keeps its stand-in: only the added card has a photo.
+    expect((await visualOf(current!, "visual-1")).image).toBeDefined();
+    expect(edit.inputs.photos).toEqual([PHOTO.id]);
+    expect(edit.tracks.sounds.map((sound) => sound.id)).toContain("click-owner-visual-1");
+  });
+
+  it("names no photo when the version shows none: a stale name in the inputs is not carried", async () => {
+    const withVisual = await placeVisualVersion();
+    await relayoutRun("bold");
+    const edit = await editOf(current!);
+    expect(edit.inputs.photos).toBeUndefined();
+    expect((await visualOf(current!, "visual-1")).image).toBeDefined();
+    expect(rows.get(current!)!.parent_id).toBe(withVisual);
+  });
+
+  it("finds the answer of a version the owner went back to, so its texts and its photo stay", async () => {
+    const swapped = await swapPicture(await placeVisualVersion());
+    // Another version on top, then back to the one with the photo: a going
+    // back copies the bytes and has no AI record of its own.
+    await relayoutRun("retro");
+    await runRestore({ ...deps(), versionId: swapped });
+    const restored = current!;
+    expect(await storage.get(aiRecordKey(PREFIX, REEL, restored))).toBeNull();
+
+    await relayoutRun("bold");
+
+    const saved = rows.get(current!)!;
+    expect(saved.parent_id).toBe(restored);
+    const edit = await editOf(saved.id);
+    expect(edit.font_pair).toBe("bold");
+    expect(edit.tracks.overlays.some((item) => item.kind === "hook")).toBe(true);
+    expect((await visualOf(saved.id, "visual-1")).photo?.id).toBe(PHOTO.id);
+    expect(edit.inputs.photos).toEqual([PHOTO.id]);
+    // The record is copied under the new version, so the next one finds it there.
+    expect(await storage.get(aiRecordKey(PREFIX, REEL, saved.id))).not.toBeNull();
   });
 });
 

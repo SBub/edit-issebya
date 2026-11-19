@@ -7,6 +7,7 @@ import { QUESTION_PREFIX } from "./question.ts";
 import { SAFE_ZONE } from "./engine-zones.ts";
 import type { HeadTrack } from "./head-track.ts";
 import type { Measurer } from "./measure.ts";
+import { type EditPhoto, photoIdsOf } from "./photos.ts";
 import { type Preset, cleanWord, wordsText } from "./preset.ts";
 import { BEHIND_WORD, type Edit, issueReasons, parseEdit } from "./schema.ts";
 import type { Transcript } from "./transcript.ts";
@@ -249,8 +250,12 @@ export function parseDecideAnswer(
 // sentences with room for their kind (the engine's own report, for the trace
 // and tests; the worker no longer asks for a second answer on them). The
 // current version's masks are not carried over: the worker's cut-out step
-// names them again for the new `behind` track. A parse failure
-// here is an engine bug, never the answer's.
+// names them again for the new `behind` track. Nor are its library photos:
+// `inputs.photos` is written from the placed tracks, so it names exactly the
+// photos the new VISUALs show (none for a new answer). `pictures` are the
+// photos the owner chose, by VISUAL id, for an answer placed again (a
+// relayout): the engine places each such card at its photo's aspect. A parse
+// failure here is an engine bug, never the answer's.
 export function editFromAnswer(
   current: Edit,
   answer: EngineInput,
@@ -258,9 +263,11 @@ export function editFromAnswer(
   transcript: Transcript,
   headTrack: HeadTrack,
   measurer: Measurer,
+  pictures?: ReadonlyMap<string, EditPhoto>,
 ): { ok: true; edit: Edit; record: EngineNote[] } | { ok: false; reasons: string[] } {
   const inputs = { ...current.inputs };
   delete inputs.masks;
+  delete inputs.photos;
   const { tracks, record } = placeEdit(
     current,
     answer,
@@ -269,18 +276,20 @@ export function editFromAnswer(
     headTrack,
     preset,
     measurer,
+    pictures,
   );
   if (measurer.pair.id !== current.font_pair) {
     throw new Error(
       `editFromAnswer: the edit is set in ${current.font_pair}, measured in ${measurer.pair.id}`,
     );
   }
+  const shown = photoIdsOf({ tracks });
   const json = {
     format: 1,
     preset: preset.id,
     font_pair: current.font_pair,
     duration: current.duration,
-    inputs,
+    inputs: shown.length > 0 ? { ...inputs, photos: shown } : inputs,
     tracks,
   };
   const parsed = parseEdit(json, preset, transcript, {

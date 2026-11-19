@@ -19,7 +19,7 @@ export function photoPath(photoId: string): string {
 }
 
 // The photos the VISUALs of an edit show, by id, sorted, each once.
-export function photoIdsOf(edit: Pick<Edit, "tracks">): string[] {
+export function photoIdsOf(edit: { tracks: Pick<Edit["tracks"], "behind"> }): string[] {
   const ids = new Set<string>();
   for (const item of edit.tracks.behind ?? []) {
     if (item.kind === "visual" && item.photo) ids.add(item.photo.id);

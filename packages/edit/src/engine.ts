@@ -33,6 +33,7 @@ import {
 import { type HeadTrack } from "./head-track.ts";
 import type { Measurer } from "./measure.ts";
 import { type PickedVariants, boxVariantOf, textVariantOf } from "./variant-picker.ts";
+import type { EditPhoto } from "./photos.ts";
 import { VISUAL_STAND_INS, timingOf } from "./variants.ts";
 import { type Preset, SHOWN_FLOOR_SECONDS, wordsText } from "./preset.ts";
 import {
@@ -106,6 +107,10 @@ export function placeEdit(
   headTrack: HeadTrack,
   preset: Preset,
   measurer: Measurer,
+  // The library photos the owner chose, by VISUAL id (`visual-N`, the Nth
+  // visual of the answer): such a card is placed at its photo's aspect and
+  // shows it in place of its stand-in. None for a new answer.
+  pictures: ReadonlyMap<string, EditPhoto> = new Map(),
 ): Placement {
   // Each pass places the answer as it stands; a pass that leaves a pick out
   // (no legal spot) or trims or drops one (same-text) is placed again, so the
@@ -127,6 +132,7 @@ export function placeEdit(
       preset,
       measurer,
       skip,
+      pictures,
     );
     for (const pick of placed.picks) picks.set(pick.id, pick);
     if (placed.noSpot.length > 0) {
@@ -210,6 +216,7 @@ function placeOnce(
   // The refs of picks dropped by the same-text rule or left out for no legal
   // spot: placed as nothing.
   skip: ReadonlySet<string>,
+  pictures: ReadonlyMap<string, EditPhoto>,
 ): { tracks: PlacedTracks; record: RecordNote[]; picks: TextPick[]; noSpot: string[] } {
   const record: RecordNote[] = [];
   // The refs of the picks this pass found no legal spot for.
@@ -533,6 +540,10 @@ function placeOnce(
     .sort((a, b) => a.start - b.start || a.index - b.index)
     .forEach((extra, rank) => {
       extra.image = VISUAL_STAND_INS[rank % VISUAL_STAND_INS.length];
+      // The owner's photo for this card, when it has one: the stand-in keeps
+      // its turn, so the other cards' pictures do not shift.
+      const photo = pictures.get(extra.id);
+      if (photo) extra.photo = photo;
     });
   extras.push(...visualExtras);
 

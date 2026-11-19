@@ -128,10 +128,12 @@ export {
   type OwnerAdd,
   OWNER_ADD_SECONDS,
   applyOwnerAdds,
+  keepOwnerAdds,
   nextOwnerVisualId,
   ownerAddPlacement,
   ownerAddSpan,
   ownerAddWord,
+  ownerPictures,
   parseOwnerAdds,
 } from "./owner-add.ts";
 export {

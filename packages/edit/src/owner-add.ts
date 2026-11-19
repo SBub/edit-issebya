@@ -5,7 +5,7 @@ import { SAFE_ZONE } from "./engine-zones.ts";
 import { type HeadTrack, facesOver } from "./head-track.ts";
 import type { Measurer } from "./measure.ts";
 import { MIN_BOX_PX, type OwnerPhoto, type OwnerPhotos, isPhotoId } from "./owner-edit.ts";
-import { withPhotoInputs } from "./photos.ts";
+import { type EditPhoto, withPhotoInputs } from "./photos.ts";
 import { type Preset, SHOWN_FLOOR_SECONDS } from "./preset.ts";
 import type { Anchor, BehindVisualItem, Edit } from "./schema.ts";
 import { anchorAt, resolveSpans, resolveTimeline } from "./timeline.ts";
@@ -222,6 +222,59 @@ export function applyOwnerAdds(
     ok: true,
     edit: withPhotoInputs({ ...edit, tracks: { ...edit.tracks, sounds, behind } }),
   };
+}
+
+// WHAT A RELAYOUT KEEPS OF THE OWNER'S PICTURES (app_docs/font-pairs.md): a
+// font pair change places the version's answer again, and a picture does not
+// depend on the font, so the photos the owner chose stay.
+
+// The library photos the owner swapped onto the answer's VISUALs, by the
+// card's id (`visual-N`, the Nth visual of the answer in every version placed
+// from it): what a relayout hands the engine (`editFromAnswer`'s `pictures`),
+// so each card is placed again showing its photo. An added card is not one of
+// them: no answer holds it (`keepOwnerAdds`).
+export function ownerPictures(edit: Pick<Edit, "tracks">): Map<string, EditPhoto> {
+  const pictures = new Map<string, EditPhoto>();
+  for (const item of edit.tracks.behind ?? []) {
+    if (item.kind === "visual" && item.photo && !ADD_ID.test(item.id)) {
+      pictures.set(item.id, item.photo);
+    }
+  }
+  return pictures;
+}
+
+// `placed` (an answer placed again) with the cards the owner added to `from`
+// (`owner-visual-N`), each as it was: its photo, its words, its time, its box
+// and its turn, after the engine's cards (drawn on top, in the order they
+// were added). Each gets its click as it comes in, unless another sound of
+// the new placement starts within the click's gap of it. `inputs.photos`
+// names the photos shown. The edit itself when the owner added none.
+export function keepOwnerAdds(
+  from: Edit,
+  placed: Edit,
+  { transcript, preset }: Pick<Context, "transcript" | "preset">,
+): Edit {
+  const taken = new Set((placed.tracks.behind ?? []).map((item) => item.id));
+  const added = (from.tracks.behind ?? []).filter(
+    (item): item is BehindVisualItem =>
+      item.kind === "visual" && ADD_ID.test(item.id) && !taken.has(item.id),
+  );
+  if (added.length === 0) return placed;
+  const sounds = [...placed.tracks.sounds];
+  const resolved = resolveTimeline(placed, transcript);
+  const soundStarts = sounds.map((sound) => resolved.get(sound.id)?.start ?? -Infinity);
+  const starts = resolveTimeline(from, transcript);
+  const { minGapSeconds } = preset.sounds.click;
+  for (const item of added) {
+    const start = starts.get(item.id)?.start;
+    if (start === undefined) continue;
+    if (soundStarts.every((at) => Math.abs(at - start) >= minGapSeconds - 1e-6)) {
+      sounds.push({ id: `click-${item.id}`, sound: "click", start: item.start, end: item.end });
+      soundStarts.push(start);
+    }
+  }
+  const behind = [...(placed.tracks.behind ?? []), ...added];
+  return withPhotoInputs({ ...placed, tracks: { ...placed.tracks, sounds, behind } });
 }
 
 // What a placed component is to the engine's placer when a card is added
