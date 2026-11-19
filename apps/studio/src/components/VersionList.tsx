@@ -12,6 +12,9 @@ interface Props {
   currentVersionId: string | null;
   // Null when going back is open; otherwise why not, in one line.
   blockedReason: string | null;
+  // Said before that reason while the reel exports (the owner may leave the
+  // page), else null.
+  notice?: string | null;
   // A control beside the heading (the temporary Start over button).
   action?: ReactNode;
 }
@@ -23,7 +26,14 @@ interface Props {
 // made by moving or resizing text reads `Edited by you`. Going back queues a
 // `restore` job: a new version copying the old one, so going back can be
 // undone too.
-export function VersionList({ reelId, versions, currentVersionId, blockedReason, action }: Props) {
+export function VersionList({
+  reelId,
+  versions,
+  currentVersionId,
+  blockedReason,
+  notice = null,
+  action,
+}: Props) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -183,7 +193,7 @@ export function VersionList({ reelId, versions, currentVersionId, blockedReason,
         </ol>
       )}
       <p id="versions-status" aria-live="polite" className="px-3 text-xs text-muted">
-        {message || blockedReason || ""}
+        {message || [notice, blockedReason].filter(Boolean).join(". ")}
       </p>
     </section>
   );

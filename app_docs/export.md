@@ -11,7 +11,9 @@ Export never blocks the studio. The Export button on a reel's page queues a `ren
 current version, and the page shows its progress in place (`Exporting… 40%`) with a Cancel button:
 no dialog opens. The owner may leave the reel, open other reels, use the photo library or upload a
 new reel; the export keeps going. Only Cancel stops it. While a reel exports, editing that reel is
-off (other reels are not held) and the page says why. The finished MP4 is kept for 48 hours, and
+off (other reels are not held) and the page says why. Nothing in the reel page's header moves or
+changes size at any moment of an export: Export, the progress with Cancel, `Downloaded` and the
+Download button all sit inside one slot of a fixed size. The finished MP4 is kept for 48 hours, and
 only the newest one of a reel: a Download icon beside the bin in the reels list and a Download
 button on the reel's page give it for as long as it is kept. If the owner is still on the reel's
 page when the render finishes, the file also downloads by itself; anywhere else nothing pops up.
@@ -88,16 +90,40 @@ now` (`EDITING_OFF_WHILE_EXPORTING`) while an export is live, else null.
     after it until the export row arrives (`finishing`); `rendering` with the running `render`
     step's live `steps.progress_percent` (0 before the first write); `ready` once the job's
     `exports` row arrived; `failed`; `cancelled`.
-  - `exportRunning(progress)`: `waiting` or `rendering`. `exportProgressLabel`: the one line,
+  - `exportRunning(progress)`: `waiting` or `rendering`. `EXPORTING_LEAD` (`Exporting…`)
+    and `exportProgressDetail` (`40%` or `waiting to start`) make the header's one line,
     `Exporting… 40%` or `Exporting… waiting to start`.
   - `keptExports(rows, now)`: per reel, its newest export while `expires_at` has not passed. This
     is the one definition of "a reel has a kept export".
-- `ExportPanel.tsx` (the reel page's header) has two states, `data-export-state`:
-  - `idle`: the Export button with its blocked reason and, while the reel has a kept export, a
-    `Download vN` button (`DownloadExportButton`, N the version the export holds).
-  - `exporting`: the line `Exporting… 40%`, a thin bar (indeterminate until the render step runs),
-    a Cancel button, and under them `You can leave this page, the export keeps going. Editing is
-off while this reel exports. Cancel the export to edit now`. The Export button is not shown.
+- `ExportPanel.tsx` (the reel page's header) is one slot of a fixed size: 32 px tall (`h-8`) and
+  216 px wide (`w-[13.5rem]`), 384 px from `sm` up (`sm:w-[24rem]`), `flex-none`. Everything it
+  shows is laid out inside that box from its right edge, so the title beside it, the header and the
+  page under the header are the same at every state. It has two states, `data-export-state`:
+  - `idle`: the Export button and, left of it while the reel has a kept export, the Download
+    button (`DownloadExportButton`): 32 px tall, 128 px wide with the words `Download vN` (N the
+    version the export holds) from `sm` up, a 32 px square with the Download icon on a phone (its
+    accessible name is still `Download vN`).
+  - `exporting`: Cancel in exactly the Export button's box (`ACTION_BOX`: 32 px tall, 72 px wide,
+    80 px from `sm` up, for both) and, left of it, the line `Exporting… 40%` with a thin bar tight
+    under it (indeterminate until the render step runs). The line and the bar have one fixed width
+    (112 px, 192 px from `sm` up), the text starts at the left edge and the digits are
+    `tabular-nums`, so `waiting to start`, `0%` and `100%` leave both where they are. Below `sm`
+    the word `Exporting…` is only read out (`sr-only`), so a phone shows the percent (or what the
+    export waits for), the bar and Cancel. The Export and Download buttons are not shown.
+
+  The notes (`export-notes`) take the room left at the slot's left edge in both states: why Export
+  is closed (`export-blocked-reason`), `Downloaded` or a failure (`export-message`) and what a
+  click on Download had to say (`export-download-status`). They are small text clipped to the
+  slot's two lines (`line-clamp-2`), with the full words as each note's `title`; a note never makes
+  the slot or the header larger. The room is 152 px beside Download and 88 px beside the progress
+  from `sm` up; on a phone 96 px beside Download and close to none beside the progress (the note is
+  still read out).
+
+  The words `You can leave this page, the export keeps going` (`LEAVE_WHILE_EXPORTING`) are not in the
+  header: `LiveReel` hands them to `VersionList` as `notice`, and the Versions column's status
+  line (`#versions-status`) reads `You can leave this page, the export keeps going. Editing is
+off while this reel exports. Cancel the export to edit now` while the reel exports. The status
+  line in the header carries the same words as its `title`.
 
   The panel follows one job: the one Export queued here, or a live one found when the page opens
   or started in another tab. Leaving the page does nothing to the job. Opening the page again
@@ -124,23 +150,25 @@ downloadName: exportFileName(...) })`. The name is `reel-v<N>-<YYYYMMDD-HHMM>.mp
   before signing, so a link is never signed past `expires_at`, and an expired export is never
   signed at all.
 - `DownloadExportButton.tsx`: Download as an icon (`variant="icon"`, the reels list, accessible
-  name `Download the export`) or a button (the reel's page). One click calls `loadExport` and
-  starts the download with a programmatic anchor click (`studio_export_downloaded`). An export that
-  expired meanwhile says `This export is no longer kept. Export again` and the page refreshes,
-  which takes the control away; a failure says `The file could not be fetched. Try again`.
+  name `Download the export`) or a button of a fixed size (the reel's page). One click calls
+  `loadExport` and starts the download with a programmatic anchor click
+  (`studio_export_downloaded`). An export that expired meanwhile says `This export is no longer
+kept. Export again` and the page refreshes, which takes the control away; a failure says `The
+file could not be fetched. Try again`. The reel page's button shows no words of its own: it hands
+  them to `ExportPanel` (`onProblem`), which shows them in the slot's notes.
 - The reels list (`apps/studio/src/app/page.tsx`) reads the owner's exports with `expires_at` in
   the future (RLS: only their own) and gives each reel in `keptExports` a Download icon left of
   the bin (`ThumbnailGrid`'s `corner`, `cornerControls: 2`). `ExportsWatcher.tsx` follows `exports`
   INSERTs over Realtime and reads the list again (`router.refresh()`, once more when the
   subscription is ready), so the icon appears without a reload. It shows nothing itself.
 - The download by itself: when the job the reel's page follows becomes `ready` while the page is
-  open, `ExportPanel` calls the same download once and shows `Downloaded` under the buttons. A
+  open, `ExportPanel` calls the same download once and shows `Downloaded` in the slot's notes. A
   browser may block a download no click started; the `Download vN` button beside it is the way to
   the file then. A page opened after the export finished downloads nothing by itself.
 - `LiveReel.tsx` follows `exports` INSERTs for the reel over Realtime and keeps the reel's kept
   export (`EXPORT_REF_COLUMNS`, read once on open and on each ready subscription, `expires_at` in
   the future). No polling.
-- A failed export shows `The export failed. Try again` under the Export button, and the progress
+- A failed export shows `The export failed. Try again` in the slot's notes, and the progress
   overlay's failure card (`app_docs/status.md`).
 
 #### The replace rule
@@ -478,7 +506,7 @@ ffmpeg -f lavfi -i color=c=black:s=108x192:r=30:d=1 -f lavfi -i anullsrc=r=48000
   and `run-job.test.ts` (the cancel check and the `cancelled` outcome), `job-kinds.test.ts` and
   `pipeline/run-pipeline.test.ts` (`setReelStatus: false`).
 - Unit (studio): `apps/studio/src/lib/exports.test.ts` (`exportBlockedReason`, `liveRenderJobId`,
-  `exportingReason`, `exportProgress`, `exportRunning`, `exportProgressLabel`, `keptExports`, the
+  `exportingReason`, `exportProgress`, `exportRunning`, `exportProgressDetail`, `keptExports`, the
   link's hour cap), `change-requests.test.ts` (editing blocked exactly while the reel exports; the
   `export of vN` label) and the storage mock's
   `apps/studio/src/app/api/e2e-storage-mock/[...key]/route.test.ts`.
@@ -489,7 +517,11 @@ ffmpeg -f lavfi -i color=c=black:s=108x192:r=30:d=1 -f lavfi -i anullsrc=r=48000
   job) and `stored-files.test.ts` (`discard_export_file`; `expire_export_files` returning expired
   and replaced exports' files and keeping a reel's newest).
 - E2E: `apps/studio/e2e/export.spec.ts`: Export shows `Exporting…` with Cancel in the header and
-  no dialog; the reel's editing controls are disabled with the reason; the line rises with the
+  no dialog; nothing in the header moves (`expectNoShift`: at 1920, 1280 and 390 px wide, the
+  header, each of its children, what is under it, the Export or Cancel box, the progress line, its
+  bar and Download have the box they first had, within 0.5 px, at every state the file reaches;
+  `watchHeader` measures the same boxes on every frame between two states); the words about leaving are in the
+  Versions column's status line, not in the header; the reel's editing controls are disabled with the reason; the line rises with the
   render double (`E2E_MOCK_RENDER_SECONDS=25`); the owner goes to the reels list while it renders
   and the job is not cancelled; the Download icon appears beside the bin with no reload and no
   download by itself, and a click downloads `reel-v2-<YYYYMMDD-HHMM>.mp4`; the export row expires
@@ -497,7 +529,10 @@ ffmpeg -f lavfi -i color=c=black:s=108x192:r=30:d=1 -f lavfi -i anullsrc=r=48000
   on. A second test stays on the page and gets the download by itself. A third leaves and comes
   back during a long render, sees the export still running, and Cancel ends it: the job
   `cancelled`, no export row, no object, no download, the earlier kept export still offered. A
-  fourth cancels a queued job the worker then never claims (Escape does nothing).
+  fourth cancels a queued job the worker then never claims (Escape does nothing). A fifth walks
+  one export through every state with no worker (it writes the job's and the render step's rows
+  itself: `waiting to start`, `getting ready`, `0%`, `7%`, `55%`, `100%`, `finishing`, Cancel) and
+  holds each to the same boxes.
 - Worker tools: `yarn workspace @edit-issebya/worker test:tools` (`render.tools.test.ts`: the
   single call's format, loudness, click times, group memory), on the owner's Mac only.
 
@@ -671,6 +706,11 @@ Before the one-screen layout (the 0.99 bound):
 
 ## Rules
 
+- Nothing in the reel page's header may move or change size at any state of an export (before
+  Export, waiting, every percent, done, Download shown, after Cancel), at any width. Never give
+  `ExportPanel`'s slot a size that depends on what it shows, never give Export and Cancel
+  different boxes, and never put a note, a label or a button outside the slot's 32 px row. A new
+  state or control goes inside the slot and into `export.spec.ts`'s `expectNoShift`.
 - Never lower `PREVIEW_EXPORT_SSIM_BOUND` below 0.9, and never change it without re-measuring both
   score sets and recording them here.
 - The guardrail compares the composition's own box, never the player element: the export frame is
