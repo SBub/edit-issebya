@@ -150,6 +150,24 @@ async function picture(id: string): Promise<{ src: string; loaded: boolean }> {
     });
 }
 
+// The picture the card shows once the page on screen has settled. A swap replaces the shown page's
+// iframe, so a read that lands while the player is `data-page="swapping"`, or just as the old
+// frame goes away, throws "Frame was detached"; both count as "not yet" and the poll asks again.
+async function settledPicture(id: string): Promise<{ src: string; loaded: boolean }> {
+  const none = { src: "", loaded: false };
+  if ((await page.locator('[data-preview="ready"][data-page="shown"]').count()) === 0) return none;
+  try {
+    return await picture(id);
+  } catch (error) {
+    if (
+      /Frame was detached|Execution context was destroyed|frame got detached/i.test(String(error))
+    ) {
+      return none;
+    }
+    throw error;
+  }
+}
+
 async function shot(name: string) {
   if (SHOTS) await page.screenshot({ path: join(SHOTS, name) });
 }
@@ -184,9 +202,11 @@ test("Change picture opens a picker of every ready library photo, newest first",
 test("one click swaps the picture: the card keeps its place, at the photo's aspect ratio", async () => {
   await page.getByTestId("picture-picker").locator(`[data-photo-id="${older.id}"]`).click();
   await expect(page.getByTestId("picture-picker")).toHaveCount(0);
-  await expect.poll(async () => (await picture(CARD)).src, { timeout: 30_000 }).toContain(older.id);
+  await expect
+    .poll(async () => (await settledPicture(CARD)).src, { timeout: 30_000 })
+    .toContain(older.id);
   await ready();
-  await expect.poll(async () => (await picture(CARD)).loaded).toBe(true);
+  await expect.poll(async () => (await settledPicture(CARD)).loaded).toBe(true);
   const swapped = await drawn(CARD);
   expect(Math.abs(swapped.height / swapped.width - 900 / 1200)).toBeLessThan(0.01);
   // Its centre kept.
