@@ -5,21 +5,31 @@ at a glance (captions, the big word behind the speaker, the hook, questions and 
 numbers); the **artistic** font writes the accents only (an accent's words, a list's key phrase, the
 hook's text, the accent that carries a question). Simple is always readable; artistic is the flourish.
 
-## The six pairs
+## The pairs
 
-Owner-approved, all Google Fonts under the SIL Open Font License. The ids are stored in edits and
-profiles, so they never change. `classic` is the default.
+Six owner-approved pairs and `modern`, a look experiment the owner judges by eye (branch
+`exp/look-inter-thin-frame`). All are Google Fonts under the SIL Open Font License. The ids are stored in
+edits and profiles, so they never change. `classic` is the default.
 
-| id            | label       | simple (weight)              | artistic (weight)             | stands in for             |
-| ------------- | ----------- | ---------------------------- | ----------------------------- | ------------------------- |
-| `classic`     | Classic     | Inter Tight SemiBold (600)   | Playfair Display Italic (400) | Helvetica + PlayFair      |
-| `script`      | Script      | Inter SemiBold (600)         | Pinyon Script (400)           | Inter + Bikham            |
-| `signature`   | Signature   | Oswald Medium (500)          | Hurricane (400)               | Bebas Neue + Bella Script |
-| `handwritten` | Handwritten | Antonio Bold (700)           | Herr Von Muellerhoff (400)    | Heading Now + Denistina   |
-| `retro`       | Retro       | Unbounded (400)              | Syne SemiBold (600)           | Old Soviet + Neue Machina |
-| `bold`        | Bold        | Archivo Expanded Black (900) | Oswald ExtraLight (200)       | Druk + Notepad            |
+| id            | label       | simple (weight)              | artistic (weight)             | stands in for                  |
+| ------------- | ----------- | ---------------------------- | ----------------------------- | ------------------------------ |
+| `classic`     | Classic     | Inter Tight SemiBold (600)   | Playfair Display Italic (400) | Helvetica + PlayFair           |
+| `script`      | Script      | Inter SemiBold (600)         | Pinyon Script (400)           | Inter + Bikham                 |
+| `signature`   | Signature   | Oswald Medium (500)          | Hurricane (400)               | Bebas Neue + Bella Script      |
+| `handwritten` | Handwritten | Antonio Bold (700)           | Herr Von Muellerhoff (400)    | Heading Now + Denistina        |
+| `retro`       | Retro       | Unbounded (400)              | Syne SemiBold (600)           | Old Soviet + Neue Machina      |
+| `bold`        | Bold        | Archivo Expanded Black (900) | Oswald ExtraLight (200)       | Druk + Notepad                 |
+| `modern`      | Modern      | Inter Light (300)            | Inter Tight Bold (700)        | Inter Light + Inter Tight Bold |
 
 The "stands in for" names are the owner's own words for the look each pair gives, not a licence claim.
+
+The `modern` files are static instances cut from the Google Fonts variable files with fontTools
+(`fonttools varLib.instancer`): `Inter-Light.ttf` from `ofl/inter/Inter[opsz,wght].ttf` (Inter 4.001) at
+`wght` 300, `opsz` 14, and `InterTight-Bold.ttf` from `ofl/intertight/InterTight[wght].ttf` (Inter Tight
+3.004) at `wght` 700, both from github.com/google/fonts (upstream rsms/inter and rsms/inter-tight). Their
+licences are the two families' own files, `OFL-Inter.txt` and `OFL-InterTight.txt`. A pair holds no
+letter-spacing: a font is its family, file, weight and style only, and HarfBuzz measures plain advance
+widths, so Inter Tight Bold is set at its own spacing.
 
 ## Where it lives
 
@@ -27,7 +37,7 @@ The "stands in for" names are the owner's own words for the look each pair gives
   with its CSS family, file, weight and style), the roles `FONT_ROLES`, `DEFAULT_FONT_PAIR_ID`, and the
   helpers `fontPairFiles` (a pair's files, each once) and `allFontFiles` (every file, what the studio may
   serve).
-- `packages/edit/assets/fonts/`: twelve static TrueType instances (no variation table, so HarfBuzz measures
+- `packages/edit/assets/fonts/`: fourteen static TrueType instances (no variation table, so HarfBuzz measures
   the very file the page loads) and one `OFL-<Family>.txt` per family.
 - `STYLES` (`src/variants.ts`) picks a role per text: `accent` is `artistic`; `caption` and `bigWord` are
   `simple`. A text item's `font` is a role, never a file.
@@ -55,7 +65,7 @@ The "stands in for" names are the owner's own words for the look each pair gives
 ## The profile
 
 - `public.profiles` (migration `20261110123542_font_pair_profiles.sql`): one row per user, `font_pair` one
-  of the six ids, default `classic`, `updated_at`. The user reads, inserts and changes only their own row
+  of the pair ids (`modern` added by `20261119100330_modern_font_pair.sql`, in `jobs.font_pair` too), default `classic`, `updated_at`. The user reads, inserts and changes only their own row
   and only `font_pair`; `service_role` has every privilege.
 - The owner saves a pair with `public.set_font_pair(p_font_pair)` (migration
   `20261110151308_set_font_pair.sql`): a `security invoker` upsert of the caller's own row. It never names

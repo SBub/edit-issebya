@@ -27,7 +27,7 @@ interface Props {
 const LIVE: readonly JobRow["status"][] = ["queued", "running", "waiting_ai"];
 const FAILED = "Font pair did not change. Try again";
 
-// The tool panel above the versions list: the six font pairs, each shown as a
+// The tool panel above the versions list: the font pairs, each shown as a
 // sample written in its own two fonts. The chosen option is this reel's pair
 // (the current version's); the "Last used" badge sits on the owner's profile
 // pair. Picking another pair saves it to the profile and queues a `relayout`

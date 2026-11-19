@@ -15,7 +15,15 @@ import { claimableJobIds, runWorkerOnce } from "../test-support/worker.ts";
 // badge sits on the profile's pair.
 
 const CACHE_PREFIX = `e2e-${crypto.randomUUID()}/`;
-const PAIR_IDS = ["classic", "script", "signature", "handwritten", "retro", "bold"] as const;
+const PAIR_IDS = [
+  "classic",
+  "script",
+  "signature",
+  "handwritten",
+  "retro",
+  "bold",
+  "modern",
+] as const;
 type PairId = (typeof PAIR_IDS)[number];
 
 const admin = localSupabaseAdmin();
@@ -124,14 +132,14 @@ async function lastUsedOption(): Promise<PairId | null> {
   return null;
 }
 
-test("the picker lists the six pairs, each sample in its own fonts, with classic chosen", async ({
+test("the picker lists the seven pairs, each sample in its own fonts, with classic chosen", async ({
   baseURL,
 }) => {
   await page.goto(await signInLink(admin, owner.email, baseURL!));
   await openReel(reel!.reelId);
 
   const picker = page.getByTestId("font-pair-picker");
-  await expect(picker.getByRole("radio")).toHaveCount(6);
+  await expect(picker.getByRole("radio")).toHaveCount(7);
   await expect(option("classic")).toHaveAttribute("aria-checked", "true");
   await expect(option("bold")).toHaveAttribute("aria-checked", "false");
   // No profile row yet: classic is the profile's pair too, so it is "Last used".

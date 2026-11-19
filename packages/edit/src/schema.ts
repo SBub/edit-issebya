@@ -471,7 +471,8 @@ export function editSchemaFor(preset: Preset, transcript: Transcript, limits: Ed
       // the layout measured them. Required: a version saved before font pairs is
       // refused, not read as the classic pair.
       font_pair: z.enum(FONT_PAIR_IDS, {
-        error: "a font pair is required: classic, script, signature, handwritten, retro or bold",
+        error:
+          "a font pair is required: classic, script, signature, handwritten, retro, bold or modern",
       }),
       duration: z.number().positive(),
       inputs: editInputsSchema,

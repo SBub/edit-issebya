@@ -15,7 +15,7 @@ export function faceStyle(font: PresetFont): CSSProperties {
   return { fontFamily: `"${font.family}"`, fontWeight: font.weight, fontStyle: font.style };
 }
 
-// The pair a profile row names; no row, or a name outside the six, is the
+// The pair a profile row names; no row, or a name outside the pairs, is the
 // classic pair (the worker reads the same rule: `apps/worker/src/font-pair-store.ts`).
 export function pairOfProfile(row: { font_pair?: unknown } | null | undefined): FontPairId {
   return isFontPairId(row?.font_pair) ? row.font_pair : DEFAULT_FONT_PAIR_ID;
