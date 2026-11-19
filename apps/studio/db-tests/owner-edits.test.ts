@@ -138,6 +138,40 @@ async function movesOf(versionId: string) {
   return data ?? [];
 }
 
+function textRecord(item: string, part: string | null = null) {
+  return {
+    item,
+    part,
+    component: part === null ? "ACCENT" : "CAPTION",
+    variant: part === null ? "accent/above-head" : "caption/default",
+    before: "sense of purpose",
+    after: "a real sense of purpose",
+    words: "sense of purpose",
+    word_ids: ["w0010", "w0011", "w0012"],
+    start: 4.2,
+    end: 5.9,
+    context: {
+      frame: { width: 1080, height: 1920 },
+      font_pair: "classic",
+      size: 110,
+      before_box: { x: 316, y: 254, width: 448.5, height: 110 },
+      after_box: { x: 320, y: 254, width: 440, height: 220 },
+    },
+  };
+}
+
+async function textsOf(versionId: string) {
+  const { data, error } = await admin
+    .from("owner_texts")
+    .select(
+      "owner_id, reel_id, version_id, from_version_id, item, part, component, variant, before_text, after_text, words, word_ids, start_seconds, end_seconds, context",
+    )
+    .eq("version_id", versionId)
+    .order("item");
+  expect(error).toBeNull();
+  return data ?? [];
+}
+
 beforeAll(async () => {
   userA = await createTestUser(admin, "owner-edits-a");
   userB = await createTestUser(admin, "owner-edits-b");
@@ -224,6 +258,38 @@ describe("owner_edit jobs", () => {
       { version_id: versionA, moves: [swap], adds: ADDS },
     ]);
     await admin.from("jobs").delete().eq("reel_id", reelA);
+  });
+
+  it("lets the owner queue text edits alone, and refuses texts that are no list or more than 200", async () => {
+    const texts = [{ id: "accent-1", text: "a real sense of purpose" }];
+    const alone = await clientA
+      .from("jobs")
+      .insert({
+        reel_id: reelA,
+        kind: "owner_edit",
+        owner_edit: { version_id: versionA, moves: [], texts },
+      })
+      .select("id, owner_edit")
+      .single();
+    expect(alone.error).toBeNull();
+    expect(alone.data?.owner_edit).toEqual({ version_id: versionA, moves: [], texts });
+    await admin.from("jobs").delete().eq("id", alone.data!.id);
+    for (const bad of [
+      { version_id: versionA, moves: [], texts: [] },
+      { version_id: versionA, moves: [], texts: "accent-1" },
+      {
+        version_id: versionA,
+        moves: [],
+        texts: Array.from({ length: 201 }, (_, index) => ({ id: `accent-${index}`, text: "a" })),
+      },
+    ]) {
+      const refused = await clientA
+        .from("jobs")
+        .insert({ reel_id: reelA, kind: "owner_edit", owner_edit: bad });
+      expect(refused.error?.message, JSON.stringify(bad).slice(0, 60)).toMatch(
+        /jobs_owner_edit_shape_check/,
+      );
+    }
   });
 
   it("refuses a payload that is not a version and a list of one to 200 moves", async () => {
@@ -448,6 +514,81 @@ describe("save_version with the owner's edit", () => {
         wrap_width: 400,
       }),
     ]);
+  });
+
+  it("saves the owner's text edits with the version: the text before and after, the element and its spoken words", async () => {
+    const reel = await insertReel(admin, { ownerId: userA.id, name: "e.mov", status: "processed" });
+    const base = await saveVersion(reel);
+    const id = randomUUID();
+    const { error } = await admin.rpc("save_version", {
+      ...versionArgs(reel, id, base),
+      p_edited_from_id: base,
+      p_owner_texts: [textRecord("accent-1"), textRecord("block_cw0001", "cw0005")],
+    });
+    expect(error).toBeNull();
+    expect(await textsOf(id)).toEqual([
+      {
+        owner_id: userA.id,
+        reel_id: reel,
+        version_id: id,
+        from_version_id: base,
+        item: "accent-1",
+        part: "",
+        component: "ACCENT",
+        variant: "accent/above-head",
+        before_text: "sense of purpose",
+        after_text: "a real sense of purpose",
+        words: "sense of purpose",
+        word_ids: ["w0010", "w0011", "w0012"],
+        start_seconds: 4.2,
+        end_seconds: 5.9,
+        context: textRecord("accent-1").context,
+      },
+      expect.objectContaining({ item: "block_cw0001", part: "cw0005", component: "CAPTION" }),
+    ]);
+    // No move was saved with them.
+    expect(await movesOf(id)).toEqual([]);
+    // The owner reads their own rows, no one else's, and writes none.
+    const mine = await clientA.from("owner_texts").select("item").eq("version_id", id);
+    expect(mine.data).toHaveLength(2);
+    const theirs = await clientB.from("owner_texts").select("item").eq("version_id", id);
+    expect(theirs.data).toEqual([]);
+    const written = await clientA
+      .from("owner_texts")
+      .update({ after_text: "mine" })
+      .eq("version_id", id);
+    expect(written.error).not.toBeNull();
+    const removed = await clientA.from("owner_texts").delete().eq("version_id", id);
+    expect(removed.error).not.toBeNull();
+    expect(await textsOf(id)).toHaveLength(2);
+    // Refused, with nothing written: text rows without the version edited, a
+    // text that did not change, an empty one, a component with no text and
+    // the same element twice.
+    const next = randomUUID();
+    const orphan = await admin.rpc("save_version", {
+      ...versionArgs(reel, next, id),
+      p_owner_texts: [textRecord("accent-1")],
+    });
+    expect(orphan.error?.message).toMatch(/owner texts need the version they were made on/);
+    for (const bad of [
+      [{ ...textRecord("accent-1"), after: "sense of purpose" }],
+      [{ ...textRecord("accent-1"), after: "" }],
+      [{ ...textRecord("visual-1"), component: "VISUAL" }],
+      [textRecord("accent-1"), textRecord("accent-1")],
+    ]) {
+      const refused = await admin.rpc("save_version", {
+        ...versionArgs(reel, next, id),
+        p_edited_from_id: id,
+        p_owner_texts: bad,
+      });
+      expect(refused.error, JSON.stringify(bad).slice(0, 80)).not.toBeNull();
+    }
+    const { data } = await admin.from("versions").select("id").eq("id", next);
+    expect(data).toEqual([]);
+    // The rows go with their reel.
+    const gone = await clientA.rpc("delete_reel", { p_reel_id: reel });
+    expect(gone.error).toBeNull();
+    expect(await textsOf(id)).toEqual([]);
   });
 
   it("leaves every other version with no edited-from version and no learning row", async () => {

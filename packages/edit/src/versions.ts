@@ -2,6 +2,7 @@ import { canonicalJson } from "./canonical-json.ts";
 import type { Check } from "./checks.ts";
 import type { EngineNote } from "./engine-note.ts";
 import type { OwnerMoveRecord } from "./owner-edit.ts";
+import type { OwnerTextRecord } from "./owner-text.ts";
 import type { Edit, EditInputs } from "./schema.ts";
 
 // One ask of a request as stored with a version written before the change
@@ -76,6 +77,9 @@ export interface NewVersion {
   // other version.
   edited_from_id: string | null;
   owner_moves: OwnerMoveRecord[];
+  // One learning record per text the owner edited (its words before and
+  // after), written to `owner_texts` in the same transaction.
+  owner_texts: OwnerTextRecord[];
 }
 
 export interface FreeFieldUse {
@@ -138,6 +142,7 @@ export interface VersionMeta {
   // empty when not given.
   editedFromId?: string | null;
   ownerMoves?: OwnerMoveRecord[];
+  ownerTexts?: OwnerTextRecord[];
 }
 
 // The canonical bytes of an edit: what a version's blob holds.
@@ -177,6 +182,7 @@ async function saveBytes(
     checklist: meta.checklist ?? [],
     edited_from_id: meta.editedFromId ?? null,
     owner_moves: meta.ownerMoves ?? [],
+    owner_texts: meta.ownerTexts ?? [],
   });
   return { id, number, key, bytes: bytes.byteLength };
 }

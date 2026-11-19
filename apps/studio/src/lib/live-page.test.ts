@@ -281,6 +281,28 @@ describe("wrapPatch, a question", () => {
   });
 });
 
+describe("changedElements, a text the owner edited", () => {
+  // A caption as the builder draws it: its one word an element of its own.
+  const caption = (word: string) =>
+    new Map<string, PageElement>([
+      [
+        "cw4",
+        el(
+          { left: "400px", top: "1500px", "font-size": "50px" },
+          { html: null, words: [["cw4_w1"]], children: ["cw4_w1"] },
+        ),
+      ],
+      ["cw4_w1", el({}, { html: word })],
+    ]);
+
+  it("names the word element whose text changed, never the text that holds it", () => {
+    // The word's own element is restyled with the new word, so the page's
+    // timeline still reveals that same element.
+    expect(changedElements(caption("short"), caption("brief"))).toEqual(["cw4_w1"]);
+    expect(changedElements(caption("short"), caption("short"))).toEqual([]);
+  });
+});
+
 describe("restyle", () => {
   function fake(style: Record<string, string>, html: string) {
     const props = new Map(Object.entries(style));

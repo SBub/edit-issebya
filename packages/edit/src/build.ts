@@ -703,6 +703,8 @@ function behindElement(
     `top: ${px(box.y)}px`,
     `font-size: ${px(box.size)}px`,
     `color: ${box.color}`,
+    // An owner's text on several lines: centred, like an accent's.
+    ...(box.lines.length > 1 ? ["text-align: center"] : []),
     ...extra,
   ].join("; ");
   return `<div${attrs([
@@ -710,7 +712,7 @@ function behindElement(
     ["class", `clip word f-${box.font}`],
     ...timing,
     ["style", css],
-  ])}>${escapeHtml(box.text)}</div>`;
+  ])}>${box.lines.map(escapeHtml).join("<br />")}</div>`;
 }
 
 // The text the page shows in its own place, each at the position the layout

@@ -14,9 +14,9 @@
 The studio reads PostHog feature flags on the server, for the signed-in user, so a page renders
 nothing behind an off flag and a server action refuses it. There is one flag today:
 
-| Key                 | What it gates                                                                                                                                                          | Read by                                                           |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| `studio-owner-edit` | the owner's editor (`app_docs/owner-edits.md`) for texts and VISUALs (a VISUAL's turn, `Change picture` and `Add picture here` included): its button, the editor, Save | the reel page (`src/app/reels/[id]/page.tsx`), `requestOwnerEdit` |
+| Key                 | What it gates                                                                                                                                                                                                        | Read by                                                           |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `studio-owner-edit` | the owner's editor (`app_docs/owner-edits.md`) for texts and VISUALs (a caption block's move, a text's inline edit, a VISUAL's turn, `Change picture` and `Add picture here` included): its button, the editor, Save | the reel page (`src/app/reels/[id]/page.tsx`), `requestOwnerEdit` |
 
 A flag is off unless PostHog says it is on. PostHog unconfigured, unreachable, slow (over 1.5 s for
 its answer, 3 s in all) or failing means off.

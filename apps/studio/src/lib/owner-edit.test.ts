@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   type Drag,
   boxStyle,
+  canEditText,
   canRewrap,
   componentLabel,
   componentOption,
@@ -19,6 +20,8 @@ import {
   pickablePhotos,
   stackedAt,
   swapAsk,
+  textBox,
+  textPartAt,
   turnOfPointer,
   withMove,
 } from "./owner-edit";
@@ -101,6 +104,67 @@ describe("the editor's caption blocks", () => {
       size: 50,
       width: 340,
     });
+  });
+});
+
+describe("the editor's inline text edit", () => {
+  const LIST = component({
+    id: "transition-1",
+    component: "LIST",
+    x: 100,
+    y: 800,
+    width: 500,
+    height: 400,
+    parts: [
+      { id: "lead", text: "they want", start: 5, end: 8, x: 200, y: 1000, width: 300, height: 50 },
+      { id: "key", text: "fair pay", start: 6, end: 8, x: 100, y: 1060, width: 500, height: 110 },
+    ],
+  });
+  const TWO = component({
+    id: "block_w0001",
+    component: "CAPTION",
+    start: 0,
+    end: 3,
+    parts: [
+      { id: "w0001", text: "we test", start: 0, end: 1, x: 300, y: 400, width: 200, height: 50 },
+      { id: "w0005", text: "this now", start: 1.2, end: 3, x: 280, y: 400, width: 240, height: 50 },
+    ],
+  });
+
+  it("is for every text, never for a visual or a single caption", () => {
+    expect(ALL.filter(canEditText).map((entry) => entry.id)).toEqual([
+      "transition-1",
+      "hook",
+      "big-word-1",
+      "question-1",
+      "accent-1",
+    ]);
+    expect(canEditText(BLOCK)).toBe(true);
+  });
+
+  it("edits a caption block's group on screen at the paused moment, the nearest when none is", () => {
+    expect(textPartAt(TWO, 0.5)).toBe("w0001");
+    expect(textPartAt(TWO, 2)).toBe("w0005");
+    // Between the two groups: the nearer one.
+    expect(textPartAt(TWO, 1.05)).toBe("w0001");
+    expect(textPartAt(TWO, 1.15)).toBe("w0005");
+    expect(textPartAt(TWO, 9)).toBe("w0005");
+  });
+
+  it("edits a list's level under the pointer, its key phrase otherwise, and a plain text whole", () => {
+    expect(textPartAt(LIST, 6, { x: 300, y: 1020 })).toBe("lead");
+    expect(textPartAt(LIST, 6, { x: 300, y: 1100 })).toBe("key");
+    // On the number, or from the Edit text button: the key phrase.
+    expect(textPartAt(LIST, 6, { x: 300, y: 850 })).toBe("key");
+    expect(textPartAt(LIST, 6)).toBe("key");
+    expect(textPartAt(component({}), 5, { x: 310, y: 410 })).toBeNull();
+  });
+
+  it("puts the field on the part's own box, or on the component's", () => {
+    expect(textBox(LIST, "lead")).toEqual({ x: 200, y: 1000, width: 300, height: 50 });
+    expect(textBox(TWO, "w0005")).toEqual({ x: 280, y: 400, width: 240, height: 50 });
+    expect(textBox(component({}), null)).toEqual({ x: 300, y: 400, width: 440, height: 110 });
+    expect(textBox(LIST, "nothing")).toEqual({ x: 100, y: 800, width: 500, height: 400 });
   });
 });
 

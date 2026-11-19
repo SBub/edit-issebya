@@ -8,6 +8,7 @@ import {
   type OwnerMove,
   isFontPairId,
   parseOwnerAdds,
+  parseOwnerTexts,
   parseOwnerMoves,
 } from "@edit-issebya/edit";
 import { changeBlockedReason } from "@/lib/change-requests";
@@ -193,7 +194,8 @@ export async function requestFontPair(input: {
 
 // The owner's moves (app_docs/owner-edits.md): queues an `owner_edit` job with
 // the version the owner edited, the moves (a swap is a card's box move with a
-// `photo_id`) and the cards the owner added. The worker applies them and
+// `photo_id`), the cards the owner added and the texts the owner edited (each
+// one element's own words). The worker applies them and
 // saves a new version marked as the owner's; the edited version stays as it
 // was. The moves and cards are checked for shape here, and for their rules
 // (the safe zone for a text, the frame for a card, each photo a ready one of
@@ -203,6 +205,7 @@ export async function requestOwnerEdit(input: {
   versionId: string;
   moves: unknown;
   adds?: unknown;
+  texts?: unknown;
 }): Promise<ChangeActionResult> {
   if (typeof input.reelId !== "string" || !isReelId(input.reelId)) return { status: "failed" };
   if (typeof input.versionId !== "string" || !isReelId(input.versionId)) {
@@ -211,8 +214,9 @@ export async function requestOwnerEdit(input: {
   const adds = parseOwnerAdds(input.adds);
   const moves =
     Array.isArray(input.moves) && input.moves.length === 0 ? [] : parseOwnerMoves(input.moves);
-  if (!moves || !adds || moves.length + adds.length === 0) {
-    return { status: "invalid", reason: "Move or resize a text first" };
+  const texts = parseOwnerTexts(input.texts);
+  if (!moves || !adds || !texts || moves.length + adds.length + texts.length === 0) {
+    return { status: "invalid", reason: "Move, resize or edit a text first" };
   }
   const open = await openReel(input.reelId);
   if (!open.ok) return open.result;
@@ -227,6 +231,11 @@ export async function requestOwnerEdit(input: {
   return insertJob(open, {
     reel_id: input.reelId,
     kind: "owner_edit",
-    owner_edit: { version_id: input.versionId, moves, ...(adds.length > 0 ? { adds } : {}) },
+    owner_edit: {
+      version_id: input.versionId,
+      moves,
+      ...(adds.length > 0 ? { adds } : {}),
+      ...(texts.length > 0 ? { texts } : {}),
+    },
   });
 }

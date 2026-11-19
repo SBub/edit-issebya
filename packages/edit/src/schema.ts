@@ -62,11 +62,8 @@ const MIN_TEXT_SIZE = 8;
 // A big word behind the speaker: one word, nothing that could leave its tag.
 export const BEHIND_WORD = /^[^\s<>&]{1,24}$/;
 
-// A big word as stored: one or two such words joined by one space.
-function isBehindText(text: string): boolean {
-  const parts = text.split(" ");
-  return parts.length <= 2 && parts.every((part) => BEHIND_WORD.test(part));
-}
+// The longest text an owner may give a big word (the text fields' own limit).
+const BEHIND_TEXT_MAX = 200;
 
 // The free custom-style field: CSS property to value, added to the element.
 const styleSchema = z.record(
@@ -235,9 +232,14 @@ function tracksSchemaFor(preset: Preset, transcript: Transcript, limits: EditLim
     z.object({
       ...base,
       kind: z.literal("word"),
-      text: z.string().refine(isBehindText, {
-        message: "a big word is one or two plain words of at most 24 letters",
-      }),
+      // The engine writes one or two plain words (the decide answer's rule,
+      // `BEHIND_WORD` in `decide.ts`). The owner may write any text in its
+      // place (app_docs/owner-edits.md): the format only bounds its length.
+      text: z.string().min(1).max(BEHIND_TEXT_MAX),
+      // The owner's text set in lines (each break the number of words on the
+      // lines before it), when it needs more than one; the engine's big word
+      // is one line and has none.
+      breaks: textProps.breaks,
       // Where the layout engine set it (its top left corner in the frame) and
       // at what size. The size's bound is the format's (a word no taller than
       // the frame), never a layout value: the engine's largest fit sets it.

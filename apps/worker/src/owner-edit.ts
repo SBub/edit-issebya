@@ -7,19 +7,24 @@ import {
   type OwnerAdd,
   type OwnerMove,
   type OwnerPhotos,
+  type OwnerText,
   type StoredVersion,
   type VersionBlobs,
   type VersionRows,
   applyOwnerAdds,
   applyOwnerMoves,
+  applyOwnerTexts,
   build,
   effectiveMoves,
+  effectiveTexts,
   headTrackSchema,
   ownerMoveProblems,
   ownerMoveRecords,
+  ownerTextRecords,
   parseEdit,
   parseOwnerAdds,
   parseOwnerMoves,
+  parseOwnerTexts,
   saveVersion,
   transcriptSchema,
   usedFreeField,
@@ -48,26 +53,35 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const CHAIN_MAX = 200;
 
 // An `owner_edit` job's payload (`jobs.owner_edit`): the version the owner
-// edited, the moves (a swap is a box move with a `photo_id`) and the cards
-// the owner added, each showing a library photo.
+// edited, the moves (a swap is a box move with a `photo_id`), the cards the
+// owner added, each showing a library photo, and the texts the owner edited.
 export interface OwnerEdit {
   versionId: string;
   moves: OwnerMove[];
   adds?: OwnerAdd[];
+  texts?: OwnerText[];
 }
 
 // The payload as the job carries it (the owner's own JSON, untrusted): null
-// when it is not `{ version_id, moves, adds? }` with a version id, a list of
-// moves and a list of added cards, at least one move or card in all.
+// when it is not `{ version_id, moves, adds?, texts? }` with a version id, a
+// list of moves, a list of added cards and a list of text edits, at least one
+// move, card or text in all.
 export function parseOwnerEdit(json: unknown): OwnerEdit | null {
   if (typeof json !== "object" || json === null) return null;
-  const { version_id: versionId, moves, adds } = json as Record<string, unknown>;
+  const { version_id: versionId, moves, adds, texts } = json as Record<string, unknown>;
   if (typeof versionId !== "string" || !UUID.test(versionId)) return null;
   const added = parseOwnerAdds(adds);
   if (!added) return null;
+  const edited = parseOwnerTexts(texts);
+  if (!edited) return null;
   const parsed = Array.isArray(moves) && moves.length === 0 ? [] : parseOwnerMoves(moves);
-  if (!parsed || parsed.length + added.length === 0) return null;
-  return { versionId, moves: parsed, ...(added.length > 0 ? { adds: added } : {}) };
+  if (!parsed || parsed.length + added.length + edited.length === 0) return null;
+  return {
+    versionId,
+    moves: parsed,
+    ...(added.length > 0 ? { adds: added } : {}),
+    ...(edited.length > 0 ? { texts: edited } : {}),
+  };
 }
 
 export interface OwnerEditRun {
@@ -105,10 +119,13 @@ async function enginePlaced(rows: VersionRows, from: StoredVersion): Promise<Sto
   return at;
 }
 
-// An owner edit job's one step (no AI call): the moves applied to the version
-// the owner edited, saved as a new version after the current one, marked as
-// the owner's (`edited_from_id`). Nothing but the moved components' place and
-// size changes. The owner's one hard rule is the safe zone: a move that leaves
+// An owner edit job's one step (no AI call): the added cards, the text edits
+// and the moves applied to the version the owner edited, in that order, saved
+// as a new version after the current one, marked as the owner's
+// (`edited_from_id`). Nothing but the moved components' place and size and the
+// edited elements' own text changes: a text edit never touches another
+// element, a time or a spoken word (`applyOwnerTexts`), and its learning
+// record goes to `owner_texts` in the same transaction. The owner's one hard rule is the safe zone: a move that leaves
 // it, an id that is no text component, or a save that moves nothing is a
 // permanent failure, and no version is written. A moved big word's cut-out is
 // decided again (the head reaches it or not) and its mask made when missing.
@@ -201,18 +218,41 @@ export async function runOwnerEdit({
       if (!added.ok) {
         throw new PermanentError(`${STEP}: the cards are refused: ${added.reasons.join("; ")}`);
       }
-      const moves = effectiveMoves(ownerEdit.moves, baseComponents);
-      if (moves.length === 0 && adds.length === 0) {
-        throw new PermanentError(`${STEP}: nothing was moved or resized`);
+      // The text edits that change a text, each on its own element: the limits
+      // are measured against the edited version's own text.
+      const texts = effectiveTexts(ownerEdit.texts ?? [], added.edit, context);
+      const texted = applyOwnerTexts(added.edit, texts, context);
+      if (!texted.ok) {
+        throw new PermanentError(`${STEP}: the texts are refused: ${texted.reasons.join("; ")}`);
+      }
+      // A move of an element whose text changed always counts: its box is no
+      // longer the version's.
+      const textIds = new Set(texts.map((text) => text.id));
+      const moves = [
+        ...effectiveMoves(
+          ownerEdit.moves.filter((move) => !textIds.has(move.id)),
+          baseComponents,
+        ),
+        ...ownerEdit.moves.filter((move) => textIds.has(move.id)),
+      ];
+      if (moves.length === 0 && adds.length === 0 && texts.length === 0) {
+        throw new PermanentError(`${STEP}: nothing was moved, resized or edited`);
       }
       const ids = [...new Set([...adds.map((add) => add.id), ...moves.map((move) => move.id)])];
-      const applied = applyOwnerMoves(added.edit, moves, context);
+      const applied = applyOwnerMoves(texted.edit, moves, context);
       if (!applied.ok) {
         throw new PermanentError(`${STEP}: the moves are refused: ${applied.reasons.join("; ")}`);
       }
-      const moved = withMasks(withOwnerCutouts(applied.edit, ids, context), transcript, headTrack);
+      // A big word's cut-out is decided again when it moved or its text changed
+      // (another width can bring it under the head).
+      const moved = withMasks(
+        withOwnerCutouts(applied.edit, [...new Set([...ids, ...textIds])], context),
+        transcript,
+        headTrack,
+      );
       const built = build(moved, transcript, headTrack, preset, measure, { engineRecord });
-      const problems = ownerMoveProblems(built.components, ids);
+      // An edited text is bound to the safe zone like a moved one.
+      const problems = ownerMoveProblems(built.components, [...new Set([...ids, ...textIds])]);
       if (problems.length > 0) {
         throw new PermanentError(`${STEP}: the moves are refused: ${problems.join("; ")}`);
       }
@@ -236,6 +276,14 @@ export async function runOwnerEdit({
         preset,
         engineRecord: engineVersion.engine_record ?? engineRecord,
       }).map((record) => ({ ...record, engine_version_id: engineVersion.id }));
+      const textRecords = ownerTextRecords({
+        texts,
+        before: { edit: baseEdit, components: baseComponents },
+        after: { edit: moved, components: built.components },
+        transcript,
+        preset,
+        engineRecord: engineVersion.engine_record ?? engineRecord,
+      });
 
       const edit = await ensureCutouts({
         ctx,
@@ -275,6 +323,7 @@ export async function runOwnerEdit({
           restoredFromId: null,
           editedFromId: base.id,
           ownerMoves: records,
+          ownerTexts: textRecords,
           request: null,
           // No AI call was made: no model.
           model: null,
@@ -294,8 +343,12 @@ export async function runOwnerEdit({
         },
       );
       const count = `${ids.length} component${ids.length === 1 ? "" : "s"}`;
+      const edited =
+        texts.length === 0
+          ? ""
+          : ` and ${texts.length} text${texts.length === 1 ? "" : "s"} edited`;
       return {
-        what: `version ${saved.number}: ${count} moved by the owner, from version ${base.number}`,
+        what: `version ${saved.number}: ${count} moved${edited} by the owner, from version ${base.number}`,
         ai: NO_USAGE,
       };
     },

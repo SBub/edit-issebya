@@ -284,7 +284,7 @@ describe("the behind track", () => {
     expect(behindReasons(edit).join("\n")).toMatch(/behind p: overlaps a hidden span of footage/);
   });
 
-  it("refuses three words, markup and a long word", () => {
+  it("takes an owner's longer text on a big word, set in lines, and refuses an empty one", () => {
     const word = (text: string) => ({
       id: "w",
       kind: "word",
@@ -292,9 +292,21 @@ describe("the behind track", () => {
       start: { time: 10 },
       end: { time: 13 },
     });
-    expect(behindReasons(withItems([word("big word three")])).length).toBeGreaterThan(0);
-    expect(behindReasons(withItems([word("<b>")])).length).toBeGreaterThan(0);
-    expect(behindReasons(withItems([word("a".repeat(25))])).length).toBeGreaterThan(0);
+    // The one or two plain words rule is the AI answer's (`decide.ts`); the
+    // stored format only bounds the length, as the owner may write any text.
+    const parses = (item: unknown): boolean => {
+      try {
+        behindReasons(withItems([item]));
+        return false;
+      } catch {
+        return true;
+      }
+    };
+    expect(parses(word("big word three"))).toBe(true);
+    expect(parses(word("a".repeat(25)))).toBe(true);
+    expect(parses({ ...word("a much longer big word"), breaks: [2] })).toBe(true);
+    expect(behindReasons(withItems([word("")])).length).toBeGreaterThan(0);
+    expect(behindReasons(withItems([word("a".repeat(201))])).length).toBeGreaterThan(0);
   });
 
   describe("with the decide limit on lengths", () => {

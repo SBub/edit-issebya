@@ -170,6 +170,18 @@ export {
   settleOwnerMove,
   withOwnerCutouts,
 } from "./owner-edit.ts";
+export {
+  type OwnerText,
+  type OwnerTextRecord,
+  OWNER_TEXTS_MAX,
+  applyOwnerTexts,
+  cleanOwnerText,
+  effectiveTexts,
+  ownerTextOf,
+  ownerTextProblem,
+  ownerTextRecords,
+  parseOwnerTexts,
+} from "./owner-text.ts";
 export { type ClipFrames, EXPORT_FPS, clipFrames, reelFrames } from "./span-frames.ts";
 export {
   type BigWordBox,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { build } from "./build.ts";
-import type { PlacedComponent } from "./components.ts";
+import { type PlacedComponent, isCaptionBlock } from "./components.ts";
 import { SAFE_ZONE } from "./engine-zones.ts";
 import {
   applyOwnerMoves,
@@ -115,7 +115,7 @@ describe("the components of a built page", () => {
     expect(isMovable({ component: "CAPTION" })).toBe(false);
     expect(
       components.filter((component) => component.component === "CAPTION").filter(isMovable),
-    ).toEqual(components.filter((component) => component.parts !== undefined));
+    ).toEqual(components.filter(isCaptionBlock));
     expect(isMovable({ component: "VISUAL" })).toBe(true);
     expect(isMovable({ component: "HOOK" })).toBe(true);
     expect(isMovable({ component: "QUESTION" })).toBe(true);

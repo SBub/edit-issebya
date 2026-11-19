@@ -687,7 +687,7 @@ test("Save sends the moves, and the worker saves them as a new version marked Ed
   await versionItem(3).getByTestId("version-toggle").click();
   await expect(versionItem(3).getByTestId("version-origin")).toHaveText("Edited by you");
   await expect(versionItem(3).getByTestId("version-edited-from")).toHaveText(
-    "You moved or resized text in v2",
+    "You moved, resized or edited text in v2",
   );
 
   // The saved version draws the two texts where the draft showed them.

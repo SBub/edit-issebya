@@ -53,6 +53,7 @@ export function supabaseVersionRows(db: SupabaseClient): VersionRows {
         p_checklist: row.checklist,
         p_edited_from_id: row.edited_from_id,
         p_owner_moves: row.owner_moves,
+        p_owner_texts: row.owner_texts,
       });
       if (error) throw supabaseFailure("version not saved", { error, status });
       return data as number;

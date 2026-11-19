@@ -56,7 +56,7 @@ first`, Try again being the progress overlay's, `app_docs/status.md`), `versionO
   going back, the owner's own words for an old change, `First version` (no parent), else `Styled
 automatically` (the decide run after the first version). A version the owner made by moving or
   resizing text (`edited_from_id`, `app_docs/owner-edits.md`) reads `Edited by you` in both, and its
-  details add `You moved or resized text in vN` (`editedFromLabel`). `versionTitle`: `Back to vN` and `First
+  details add `You moved, resized or edited text in vN` (`editedFromLabel`). `versionTitle`: `Back to vN` and `First
 version` as above; otherwise the version's `change_title`, falling back (versions saved before
   titles) to the owner's request, else the origin label. A version saved now has no title (null), so
   it reads its origin label: `Styled automatically` for the automatic run and Start over.

@@ -64,8 +64,8 @@ sm:right-auto`) and could cover up to 320 px of the reel's top-left. Its bar is 
   the preview.
 - `apps/studio/src/components/ReelPreview.tsx`, `PreviewPlayer.tsx`: the preview builds the
   reel's current version (`reels.current_version_id`) and exposes the player's clock to the control
-  row (Play or Pause at the left, the clock in the centre, then `Edit` (desktop only, `lg:`;
-  `app_docs/owner-edits.md`), Zones and last the expand button at the right). The row is a three-column grid (`grid-cols-[1fr_auto_1fr]`), the outer two columns
+  row (Play or Pause at the left, the clock in the centre, then `Edit` (desktop only, `lg:`; it opens the Edit mode, where the owner moves, resizes and
+  fixes the words of the texts on the paused preview, `app_docs/owner-edits.md`), Zones and last the expand button at the right). The row is a three-column grid (`grid-cols-[1fr_auto_1fr]`), the outer two columns
   equal, so the clock sits on the row's horizontal centre whatever stands left and right of it.
   Play or Pause is an
   icon button at the left of the row (`data-testid="play-toggle"`): a filled play triangle with

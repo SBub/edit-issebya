@@ -6,10 +6,12 @@ import type { TextBox } from "./engine-space.ts";
 import type { Edit } from "./schema.ts";
 import type { ResolvedItem, Span } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
+import type { LevelRole } from "./transitions.ts";
 
 // One part of a component with its own box and time on screen: one group of a
 // caption block (the captions on screen together; its id is its first
-// caption's, `items` its captions' ids).
+// caption's, `items` its captions' ids), or a LIST's lead-in or key phrase
+// (its id `lead` or `key`). What the owner's text edit names (`owner-text.ts`).
 export interface ComponentPart extends Span {
   id: string;
   text: string;
@@ -40,7 +42,8 @@ export interface PlacedComponent extends Span {
   // absent for an empty frame and for a text.
   picture?: string;
   // A caption block (a sentence's captions, `caption-blocks.ts`): its groups,
-  // in time order. Only a block has parts: a single caption has none.
+  // in time order; a single caption has none. A LIST: its lead-in and its key
+  // phrase.
   parts?: ComponentPart[];
 }
 
@@ -62,7 +65,7 @@ export function isCaptionBlock(component: Pick<PlacedComponent, "component" | "p
 export function placedComponents(
   edit: Edit,
   boxes: readonly TextBox[],
-  levels: readonly (TextBox & { transitionId: string })[],
+  levels: readonly (TextBox & { transitionId: string; role: LevelRole })[],
   bigWords: readonly BigWordBox[],
   resolved: ReadonlyMap<string, ResolvedItem>,
   transcript: Transcript,
@@ -140,6 +143,19 @@ export function placedComponents(
       y: top,
       width: Math.max(...own.map((level) => level.x + level.width)) - left,
       height: Math.max(...own.map((level) => level.y + level.height)) - top,
+      // The levels whose words the owner may edit, each with its own box.
+      parts: own
+        .filter((level) => level.role !== "number")
+        .map((level) => ({
+          id: level.role,
+          text: level.text,
+          start: level.start,
+          end: level.end,
+          x: level.x,
+          y: level.y,
+          width: level.width,
+          height: level.height,
+        })),
     });
   }
   const words = new Map(bigWords.map((word) => [word.itemId, word]));

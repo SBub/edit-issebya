@@ -236,7 +236,7 @@ function isWrapWidth(width: unknown): width is number {
 // The lines of a text set at `size` in `font` on the fewest balanced lines (the
 // engine's own balancing) whose widest fits `width`; one word a line when even
 // that is wider (a word is never cut).
-function wrapToWidth(
+export function wrapToWidth(
   text: string,
   font: FontRole,
   size: number,
@@ -267,7 +267,7 @@ function lineWidths(text: string, font: FontRole, size: number, measurer: Measur
 
 // An overlay's font (an accent, a question or the hook): its own, or the
 // accent style's, as the builder reads it.
-function overlayFont(item: { font?: FontRole }): FontRole {
+export function overlayFont(item: { font?: FontRole }): FontRole {
   return item.font ?? STYLES.accent.font;
 }
 
@@ -284,11 +284,11 @@ function overlayText(
 }
 
 // `breaks` for a text's lines: none on one line.
-function breaksFor(lines: readonly string[]): { breaks?: number[] } {
+export function breaksFor(lines: readonly string[]): { breaks?: number[] } {
   return lines.length > 1 ? { breaks: breaksOf(lines) } : {};
 }
 
-function withoutBreaks<T extends { breaks?: number[] }>(item: T): Omit<T, "breaks"> {
+export function withoutBreaks<T extends { breaks?: number[] }>(item: T): Omit<T, "breaks"> {
   const copy = { ...item };
   delete copy.breaks;
   return copy;
@@ -523,7 +523,7 @@ export function applyOwnerMoves(
 
 // A caption block's captions as the block lays them: each with its text and
 // font, by group.
-function blockUnits(
+export function blockUnits(
   edit: Edit,
   block: CaptionBlock,
   { transcript, preset }: Pick<Context, "transcript" | "preset">,
@@ -554,7 +554,7 @@ function blockRect(
   );
 }
 
-const hundredth = (n: number): number => Math.round(n * 100) / 100;
+export const hundredth = (n: number): number => Math.round(n * 100) / 100;
 
 // A caption block after a move: each of its captions' place and size. A move
 // that only moves carries every caption with the box. A new size lays the block
@@ -608,30 +608,36 @@ function isBigWord(edit: Edit, id: string): boolean {
 // lead-in and the key phrase are wrapped to the width at their new sizes, and
 // the levels are stacked from the move's corner in their order on screen, each
 // centred on the widest (as `stackPositions` stacks them), the gap before each
-// the version's gap scaled. Whole pixels.
-function restack(
+// the version's gap scaled. Whole pixels. `rewrap` names the levels wrapped
+// to the width (the lead-in and the key phrase for a move; the one level whose
+// text the owner edited); every other level keeps its lines. Each level comes
+// back with its width, so the caller knows the stack's.
+export function restack(
   levels: NonNullable<Edit["tracks"]["transitions"][number]["levels"]>,
   own: readonly { role: (typeof LEVEL_ROLES)[number]; y: number; height: number }[],
   move: OwnerTextMove & { width: number },
   scale: number,
   measurer: Measurer,
-): Map<(typeof LEVEL_ROLES)[number], { x: number; y: number; lines: string[] }> {
+  rewrap: readonly (typeof LEVEL_ROLES)[number][] = ["lead", "key"],
+): Map<(typeof LEVEL_ROLES)[number], { x: number; y: number; lines: string[]; width: number }> {
   const order = [...own].sort((a, b) => a.y - b.y);
   const shaped = order.map((box, index) => {
     const level = levels[box.role]!;
     const size = box.role === "key" ? move.size : Math.round(level.size * scale);
     const { font } = levelStyle(box.role);
-    const lines =
-      box.role === "number"
-        ? textLines(level.text, level.breaks)
-        : wrapToWidth(level.text, font, size, move.width, measurer);
+    const lines = rewrap.includes(box.role)
+      ? wrapToWidth(level.text, font, size, move.width, measurer)
+      : textLines(level.text, level.breaks);
     const width = Math.max(...lines.map((line) => measurer.width(font, size, line)));
     const before = order[index - 1];
     const gap = before ? (box.y - (before.y + before.height)) * scale : 0;
     return { role: box.role, lines, width, height: size * lines.length, gap };
   });
   const widest = Math.max(...shaped.map((level) => level.width));
-  const out = new Map<(typeof LEVEL_ROLES)[number], { x: number; y: number; lines: string[] }>();
+  const out = new Map<
+    (typeof LEVEL_ROLES)[number],
+    { x: number; y: number; lines: string[]; width: number }
+  >();
   let y = move.y;
   for (const level of shaped) {
     y += level.gap;
@@ -639,6 +645,7 @@ function restack(
       x: Math.round(move.x + Math.max(0, Math.floor((widest - level.width) / 2 + SLACK))),
       y: Math.round(y),
       lines: level.lines,
+      width: level.width,
     });
     y += level.height;
   }

@@ -9,6 +9,7 @@ import {
   type Transcript,
   type VersionRows,
   captionBlocks,
+  ownerTextOf,
   parseEdit,
   transcriptSchema,
 } from "@edit-issebya/edit";
@@ -271,6 +272,155 @@ describe("parseOwnerEdit", () => {
     ]) {
       expect(parseOwnerEdit({ version_id, moves: [], adds: [bad] })).toBeNull();
     }
+  });
+});
+
+describe("parseOwnerEdit, text edits", () => {
+  const version_id = "00000000-0000-4000-8000-000000000002";
+
+  it("reads text edits, alone or with moves, and refuses a malformed one", () => {
+    const text = { id: "accent-1", text: "a real test" };
+    expect(parseOwnerEdit({ version_id, moves: [], texts: [text] })).toEqual({
+      versionId: version_id,
+      moves: [],
+      texts: [text],
+    });
+    const move = { id: "accent-1", x: 1, y: 2, size: 30 };
+    expect(
+      parseOwnerEdit({ version_id, moves: [move], texts: [{ ...text, part: "key" }] }),
+    ).toEqual({ versionId: version_id, moves: [move], texts: [{ ...text, part: "key" }] });
+    expect(parseOwnerEdit({ version_id, moves: [], texts: [] })).toBeNull();
+    for (const bad of [
+      "accent-1",
+      [{ id: "accent-1" }],
+      [{ id: "accent-1", text: " padded" }],
+      [text, text],
+    ]) {
+      expect(parseOwnerEdit({ version_id, moves: [], texts: bad })).toBeNull();
+    }
+  });
+});
+
+describe("runOwnerEdit, text edits", () => {
+  it("saves a text the owner fixed as a new version: only that element's words, its time and every other element kept", async () => {
+    const before = await editOf(placedId);
+    const accent = overlay(before, "accent-1");
+    const spoken = accent.words!.map((id) => transcript.words.find((word) => word.id === id)!.text);
+    await ownerEditRun({
+      versionId: placedId,
+      moves: [],
+      texts: [{ id: "accent-1", text: "a fixed line" }],
+    });
+    expect(rows.size).toBe(3);
+    const saved = rows.get(current!)!;
+    expect(saved).toMatchObject({ number: 3, parent_id: placedId, edited_from_id: placedId });
+    const after = await editOf(saved.id);
+    const now = overlay(after, "accent-1");
+    expect(now.text).toBe("a fixed line");
+    expect([now.words, now.start, now.end, now.size]).toEqual([
+      accent.words,
+      accent.start,
+      accent.end,
+      accent.size,
+    ]);
+    // The box keeps its top.
+    expect(now.position.y).toBe(accent.position.y);
+    // Only that element: the hook, the captions (those of the same spoken
+    // words too) and the sounds are the edited version's.
+    expect(after.tracks.overlays.filter((item) => item.id !== "accent-1")).toEqual(
+      before.tracks.overlays.filter((item) => item.id !== "accent-1"),
+    );
+    expect(after.tracks.captions).toEqual(before.tracks.captions);
+    expect(after.tracks.sounds).toEqual(before.tracks.sounds);
+    expect(after.duration).toBe(before.duration);
+    // One learning record for the text, none for a move.
+    expect(saved.owner_moves).toEqual([]);
+    expect(saved.owner_texts).toHaveLength(1);
+    expect(saved.owner_texts[0]).toMatchObject({
+      item: "accent-1",
+      part: null,
+      component: "ACCENT",
+      variant: "accent/above-head",
+      after: "a fixed line",
+      words: spoken.join(" "),
+      word_ids: accent.words,
+    });
+    expect(saved.owner_texts[0]!.before.length).toBeGreaterThan(0);
+    expect(saved.owner_texts[0]!.before).not.toBe("a fixed line");
+    // The edited version is not rewritten.
+    expect(overlay(await editOf(placedId), "accent-1").text).toBe(accent.text);
+  });
+
+  it("fixes a word of a caption block's group and of the hook, and applies a move after the text", async () => {
+    const before = await editOf(placedId);
+    const block = captionBlocks(before, transcript)[0]!;
+    const group = block.groups[0]!;
+    const fixed = group.captions.map((_, index) => (index === 0 ? "fixed" : `w${index}`)).join(" ");
+    const hook = overlay(before, "hook");
+    await ownerEditRun({
+      versionId: placedId,
+      moves: [{ id: "hook", x: hook.position.x, y: hook.position.y + 40, size: hook.size }],
+      texts: [
+        { id: block.id, part: group.id, text: fixed },
+        { id: "hook", text: "A new hook line" },
+      ],
+    });
+    const saved = rows.get(current!)!;
+    const after = await editOf(saved.id);
+    expect(
+      group.captions.map((id) => after.tracks.captions.find((item) => item.id === id)!.text),
+    ).toEqual(fixed.split(" "));
+    for (const id of group.captions) {
+      const was = before.tracks.captions.find((item) => item.id === id)!;
+      const now = after.tracks.captions.find((item) => item.id === id)!;
+      expect([now.words, now.start, now.end, now.size]).toEqual([
+        was.words,
+        was.start,
+        was.end,
+        was.size,
+      ]);
+    }
+    expect(overlay(after, "hook")).toMatchObject({
+      text: "A new hook line",
+      position: { x: hook.position.x, y: hook.position.y + 40 },
+    });
+    expect(overlay(after, "accent-1")).toEqual(overlay(before, "accent-1"));
+    expect(saved.owner_texts.map((record) => [record.item, record.part, record.component])).toEqual(
+      [
+        [block.id, group.id, "CAPTION"],
+        ["hook", null, "HOOK"],
+      ],
+    );
+    expect(saved.owner_texts[1]).toMatchObject({
+      words: "",
+      word_ids: [],
+      after: "A new hook line",
+    });
+    // The hook moved too: its move has its own record.
+    expect(saved.owner_moves.map((record) => record.item)).toEqual(["hook"]);
+  });
+
+  it("refuses an empty text, one too long, an element that is no text and a text that changes nothing, writing no version", async () => {
+    const texts = (text: string, id = "accent-1") =>
+      ownerEditRun({ versionId: placedId, moves: [], texts: [{ id, text }] });
+    expect(await refusal(texts(""))).toMatch(
+      /the texts are refused: accent-1: A text cannot be empty/,
+    );
+    expect(await refusal(texts("a".repeat(201)))).toMatch(
+      /accent-1: This text can be at most \d+ characters \(it has 201\)/,
+    );
+    expect(await refusal(texts("a card", "visual-1"))).toMatch(
+      /visual-1: not a text of this version/,
+    );
+    // The text it already shows is no edit.
+    const same = ownerTextOf(
+      await editOf(placedId),
+      { id: "accent-1" },
+      { transcript, preset: ISSEBYA_PRESET },
+    )!.text;
+    expect(await refusal(texts(same))).toMatch(/nothing was moved, resized or edited/);
+    expect(rows.size).toBe(2);
+    expect(current).toBe(placedId);
   });
 });
 
@@ -714,7 +864,7 @@ describe("runOwnerEdit", () => {
         moves: [{ id: "hook", x: hook.position.x, y: hook.position.y, size: hook.size }],
       }),
     );
-    expect(reason).toMatch(/nothing was moved or resized/);
+    expect(reason).toMatch(/nothing was moved, resized or edited/);
     expect(rows.size).toBe(2);
   });
 

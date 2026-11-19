@@ -142,6 +142,12 @@ for own reel`, through a column-limited grant (`reel_id`, `kind`, `request`, `re
   least one), `owner_moves`' `added`, `swapped`, `photo_id` and `replaced` with a nullable
   `engine_box`, and `save_version` replaced with the same signature to write them
   (`app_docs/owner-edits.md`).
+- `supabase/migrations/20261119114356_owner_caption_moves.sql` and
+  `20261119115900_owner_text_edits.sql`: the Edit mode's caption blocks and text edits:
+  `owner_moves.component` accepts `CAPTION`; the `owner_edit` payload's optional `texts` (0 to 200,
+  at least one move, card or text); the learning table `public.owner_texts` (owner-only `select`,
+  `service_role` writes, its rows go with their reel); and `save_version` dropped and created
+  again with one more parameter, `p_owner_texts` (`app_docs/owner-edits.md`).
   The sixth job kind, `describe_photo`. `reel_id` is now nullable on `jobs`, `steps` and
   `stored_files`, each with a `photo_id` beside it (`on delete cascade`) and a check that exactly one
   is set (`jobs_target_check` also ties `describe_photo` to `photo_id`). Owners never insert a
