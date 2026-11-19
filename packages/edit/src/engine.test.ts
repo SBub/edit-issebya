@@ -995,7 +995,7 @@ describe("visuals: corner cards over the footage", () => {
         /<div id="visual-1" class="clip visual-picture"[^>]*data-track-index="30"[^>]*>\n {2}<img src="assets\/visuals\/visual-1\.jpg" alt="">\n<\/div>/,
       );
       expect(html).toContain(
-        `.visual-picture::after { content: ""; position: absolute; inset: 0; border: ${card.stroke}px solid #ffffff; box-sizing: border-box; }`,
+        `.visual-picture::after { content: ""; position: absolute; inset: 0; border: ${card.stroke}px solid #ffffff; box-sizing: border-box; border-radius: 16px; }`,
       );
       expect(html).not.toMatch(/class="clip visual"/);
     }

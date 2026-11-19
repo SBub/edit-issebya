@@ -183,7 +183,7 @@ export const VARIANTS = {
     variant: "visual/card",
     layer: "front",
     type: "box",
-    style: { stroke: { color: WHITE, px: 8 } },
+    style: { stroke: { color: WHITE, px: 2 } },
     zones: ["corner", "beside-face"],
     timing: { option: "words-min-max", minimum: 1, maximum: 2 },
     hides: false,

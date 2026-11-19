@@ -173,7 +173,7 @@ describe("build", () => {
       '<div id="visual-1" class="clip visual-picture" data-start="5.206" data-duration="2.000" data-track-index="30" style="left: 600px; top: 300px; width: 400px; height: 300px">\n  <img src="assets/visuals/visual-2.jpg" alt="">\n</div>',
     );
     expect(html).toContain(
-      ".visual-picture img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; }",
+      ".visual-picture img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; border-radius: 16px; }",
     );
     expect(assets).toContainEqual({
       path: "assets/visuals/visual-2.jpg",
