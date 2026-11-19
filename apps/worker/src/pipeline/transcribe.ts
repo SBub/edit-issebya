@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { writeAtomic } from "./atomic.ts";
 import type { PipelineStep } from "./definition.ts";
 import { ALIGN_SETTINGS } from "./align.ts";
+import { placeUnspelled } from "./unspelled.ts";
 import { alignModelPath } from "./align-model.ts";
 import { envelopeArgs, parseEnvelope } from "./envelope.ts";
 import {
@@ -29,7 +30,9 @@ import { relistenModelPath, verifyRelistenModel } from "./whisper-model.ts";
 
 // 1: HyperFrames' whisper times. 2: whisper's words, the aligner's times.
 // 3: the spots where a word may be missing heard again by a larger model.
-const TRANSCRIBE_VERSION = 3;
+// 4: digits and symbols aligned by their spoken form ("2027" as "twenty
+// twenty seven"); a word still without letters narrowed to its sound.
+const TRANSCRIBE_VERSION = 4;
 
 // Always the multilingual `small` model told the language: `small.en` and
 // `base` drop or merge words on this footage (app_docs/pipeline.md). The
@@ -80,10 +83,18 @@ export function transcribeArgs(
 }
 
 // The aligner entry's arguments: the footage, Whisper's words, where the
-// aligned transcript goes, its threads, the model, ffmpeg and the file its
-// letter probabilities are kept in (read back by a second alignment).
+// aligned transcript goes, its threads, the model, ffmpeg, the file its
+// letter probabilities are kept in (read back by a second alignment) and the
+// language the words' spoken forms are read in.
 export function alignArgs(
-  input: { footage: string; words: string; output: string; threads: number; emissions: string },
+  input: {
+    footage: string;
+    words: string;
+    output: string;
+    threads: number;
+    emissions: string;
+    language: string;
+  },
   model: string,
   tools: Pick<ToolPaths, "ffmpeg">,
 ): string[] {
@@ -103,11 +114,15 @@ export function alignArgs(
     tools.ffmpeg,
     "--emissions",
     input.emissions,
+    "--language",
+    input.language,
   ];
 }
 
 // Whisper `small` (through HyperFrames) hears the words; the aligner
-// (align-entry.ts) times each one in the audio. Then the re-listen
+// (align-entry.ts) times each one in the audio, spelling digits and symbols
+// by their spoken form; a word it still cannot spell is narrowed to the
+// sound in its space (unspelled.ts, on the envelope). Then the re-listen
 // (relisten.ts): where the audio and those times say a word may be missing,
 // Whisper `medium` hears a short window again, and its words replace the old
 // ones only between two words both models agree on. When that changed the
@@ -156,6 +171,7 @@ export const transcribe: PipelineStep<TranscribeSettings> = {
             output: join(dir, output),
             threads: availableParallelism(),
             emissions: join(dir, EMISSIONS),
+            language: settings.language,
           },
           alignModelPath(),
           tools,
@@ -164,14 +180,20 @@ export const transcribe: PipelineStep<TranscribeSettings> = {
         ignoreStdout: true,
       });
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the job's scratch folder
-      return parseTranscript(await readFile(join(dir, output), "utf8"));
+      const placed = parseTranscript(await readFile(join(dir, output), "utf8"));
+      return {
+        words: placeUnspelled({
+          words: placed.words,
+          envelope,
+          language: settings.language,
+          settings: settings.align.unspelled,
+        }),
+      };
     };
 
     // A file left by an earlier try must not stand in for this clip's audio.
     await rm(join(dir, EMISSIONS), { force: true });
     const heard = normaliseHyperframes(await hear(footage, "hyperframes", settings.model));
-    const aligned = await align(heard, HEARD, ALIGNED);
-
     await tool({
       file: tools.ffmpeg,
       args: envelopeArgs(footage, ENVELOPE_PRINT),
@@ -180,8 +202,15 @@ export const transcribe: PipelineStep<TranscribeSettings> = {
     });
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- inside the job's scratch folder
     const envelope = parseEnvelope(await readFile(join(dir, ENVELOPE_PRINT), "utf8"));
+    const aligned = await align(heard, HEARD, ALIGNED);
+
     const relisten = settings.relisten;
-    const spots = relistenSpots({ words: aligned.words, envelope, settings: relisten });
+    const spots = relistenSpots({
+      words: aligned.words,
+      envelope,
+      settings: relisten,
+      language: settings.language,
+    });
     const replacements: Replacement[] = [];
     if (spots.length > 0) await verifyRelistenModel(relistenModelPath());
     for (const [index, spot] of spots.entries()) {

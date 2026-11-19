@@ -3,7 +3,7 @@
 // word may be missing (a spot), a larger Whisper model hears a short window
 // around it again, and its words replace the old ones only between two words
 // both models agree on. A window that brings nothing new changes nothing.
-import { wordTokens } from "./align.ts";
+import { spokenLetters } from "./align.ts";
 import { missedSpeech } from "./speech-gaps.ts";
 import type { Word } from "./transcript.ts";
 import { RELISTEN_MODEL } from "./whisper-model.ts";
@@ -46,10 +46,20 @@ export interface Spot {
 
 // The stretched words: a word the aligner had to spread over far more audio
 // than its letters need, which is what happens to the neighbour of a dropped
-// word. Letters are the aligner's (wordTokens); a word without any is skipped.
-export function stretchedWords(words: readonly Word[], settings: RelistenSettings): Word[] {
+// word. Letters are the aligner's, of the word's spoken form (spokenLetters:
+// "2027." counts the letters of "twenty twenty seven"), so a long number can
+// be a spot too; a word without any is skipped.
+export function stretchedWords(
+  words: readonly Word[],
+  settings: RelistenSettings,
+  language: string,
+): Word[] {
+  const counts = spokenLetters(
+    words.map((word) => word.text),
+    language,
+  );
   const lettered = words
-    .map((word) => ({ word, letters: wordTokens(word.text).length }))
+    .map((word, index) => ({ word, letters: counts[index]! }))
     .filter(({ letters }) => letters > 0);
   if (lettered.length === 0) return [];
   const perLetter = lettered
@@ -74,10 +84,12 @@ export function relistenSpots({
   words,
   envelope,
   settings,
+  language,
 }: {
   words: readonly Word[];
   envelope: readonly number[];
   settings: RelistenSettings;
+  language: string;
 }): Spot[] {
   const gaps = missedSpeech({
     words,
@@ -91,7 +103,7 @@ export function relistenSpots({
   });
   const candidates: Spot[] = [
     ...gaps.map(([start, end]): Spot => ({ start, end, kinds: ["gap"] })),
-    ...stretchedWords(words, settings).map((word): Spot => ({
+    ...stretchedWords(words, settings, language).map((word): Spot => ({
       start: word.start,
       end: word.end,
       kinds: ["word"],

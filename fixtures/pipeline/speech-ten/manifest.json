@@ -13,14 +13,14 @@
     },
     {
       "name": "transcribe",
-      "fingerprint": "077e3b9ef141ab6fca5cff123fcdc34e42f044de299a61e2f8ab7c89e42d5f92",
+      "fingerprint": "a40e53aab1eb439b37de4694481e043827298aaa80a2c47d927e11c4d6b2b082",
       "files": [
         "transcript.json"
       ]
     },
     {
       "name": "retime",
-      "fingerprint": "c9707ec19013a56c382f437a44daaccd2794a9313f7496a159050e16ae36a4cf",
+      "fingerprint": "b99b0aa59c9e06ff411f290624ed53e0ab9149b7e55d346343d67264b9af7f2e",
       "files": [
         "source.mp4",
         "transcript.json",
@@ -30,14 +30,14 @@
     },
     {
       "name": "head_track",
-      "fingerprint": "e72d50e1e274aaed349e02bc010270e485e219e46101f20db8f99afbf9ac1f31",
+      "fingerprint": "6e4a70bb0b38122bbd3b8e36ae062d1c6cb84a7bb74aa80cc7bb6fa52e8bde6b",
       "files": [
         "head-track.json"
       ]
     },
     {
       "name": "preview_copies",
-      "fingerprint": "72b0b8bd2ecc43227849b906c9917cf9e0df93a320dad713d4e0243a5a4333a5",
+      "fingerprint": "fc8c7a8dd008caa65481e8a24f90041bd07dc80c683ae6f61fc237e085645408",
       "files": [
         "footage-preview.mp4",
         "thumbnail.jpg",
