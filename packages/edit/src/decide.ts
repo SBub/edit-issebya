@@ -324,8 +324,13 @@ export function decideCounts(edit: Edit, transcript: Transcript, preset: Preset)
     questions: overlays.filter((item) => item.id.startsWith(QUESTION_PREFIX)).length,
     transitions: transitions.length,
     hook: overlays.some((item) => item.kind === "hook"),
+    // The curator's word fixes: a caption text the owner wrote by hand or a
+    // transcript correction of hers (both marked in `edit.owner`) is not one.
     wordsFixed: captions.filter(
-      (item) => item.text !== undefined && item.text !== wordsText(item.words, transcript, preset),
+      (item) =>
+        item.text !== undefined &&
+        item.text !== wordsText(item.words, transcript, preset) &&
+        !(edit.owner?.texts ?? []).includes(item.id),
     ).length,
   };
 }

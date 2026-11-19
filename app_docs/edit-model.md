@@ -110,6 +110,12 @@ start, end }` ref plus the span of the reel it covers, in seconds, by start). A 
   preset.
 - `style` is the free custom-style field: CSS property to value, added to the element. Values
   cannot leave the style attribute (no `;`, `{`, `}`, `<`, `>`, backslash or `url(`).
+- `owner`, optional, at the top of the edit: `{ placed, texts }`, the ids of the items the owner
+  placed by hand and of the texts the owner wrote in the studio's Edit mode (`src/owner-marks.ts`;
+  sorted, each once; a list's level is `<id>/<role>`). Written only by the owner's edit, its carry
+  and the reel's transcript corrections, which mark the captions they write
+  (`app_docs/owner-edits.md`); the builder does not read it; a version the owner never edited and
+  no correction touched has none.
 - Validation is Zod 4. `editSchemaFor(preset, transcript)` is built per reel: word ids are the
   transcript's and fonts the preset's, so an unknown word or font is refused by the schema itself;
   a refinement refuses a duplicate id, an end before its start, an overlay with neither words
@@ -322,7 +328,9 @@ item's id>`: a visual's, the engine's and an owner's added card's, and a big wor
   where the person is not), and an untimed `plus-lighter` sub-group (`.cutout-front`) of a second
   footage copy times the mask (the person back in front). Every layer is a plain timed element, so
   the player and the render's frame injector show the same pixels. A span with no matching entry
-  in `inputs.masks` (start and end within half a millisecond) throws. Per pixel the group is
+  in `inputs.masks` (start and end within half a millisecond) throws on the full page (a layer
+  page draws no composite and names no mask, so it builds without them: the owner's editor and the
+  carry read their boxes from the `front` page of an edit whose masks are not made yet). Per pixel the group is
   `(footage with the words over it) x (1 - mask) + footage x mask`. The export's composite does the
   same blend a second time in ffmpeg (`compositeGraph` in `apps/worker/src/render/composite.ts`,
   `app_docs/export.md`), from the `behind` page's frames, the footage and the mask.

@@ -479,6 +479,18 @@ export function editSchemaFor(preset: Preset, transcript: Transcript, limits: Ed
       duration: z.number().positive(),
       inputs: editInputsSchema,
       tracks: tracksSchemaFor(preset, transcript, limits),
+      // What the owner changed by hand in the studio's Edit mode
+      // (app_docs/owner-edits.md), so a later re-layout or Start over can keep
+      // it: the ids of the items the owner placed (a moved caption block: each
+      // of its captions) and of the texts the owner wrote (a list's level:
+      // `<id>/<role>`). Sorted, each once. A version the owner never edited
+      // has none.
+      owner: z
+        .object({
+          placed: z.array(z.string().min(1).max(80)).max(5000),
+          texts: z.array(z.string().min(1).max(80)).max(5000),
+        })
+        .optional(),
     })
     .superRefine((edit, ctx) => refineEdit(edit, transcript, preset, limits, ctx));
 }

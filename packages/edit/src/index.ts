@@ -182,6 +182,17 @@ export {
   ownerTextRecords,
   parseOwnerTexts,
 } from "./owner-text.ts";
+export { type OwnerCarry, OWNER_CARRY_RULE, carryOwnerEdits } from "./owner-carry.ts";
+export {
+  type CorrectionsApplied,
+  type StoredCorrection,
+  type WordCorrection,
+  applyWordCorrections,
+  captionCorrections,
+  correctedTranscript,
+  liveCorrections,
+  withWordCorrections,
+} from "./owner-corrections.ts";
 export { type ClipFrames, EXPORT_FPS, clipFrames, reelFrames } from "./span-frames.ts";
 export {
   type BigWordBox,

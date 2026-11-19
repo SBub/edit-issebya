@@ -1,4 +1,5 @@
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   type Edit,
@@ -11,6 +12,7 @@ import {
 } from "@edit-issebya/edit";
 import { e2eStorageRoot, fakeStorage } from "@edit-issebya/storage";
 import { type Page, expect, test } from "@playwright/test";
+import { unchangedAnswerScript } from "../test-support/ai-script.ts";
 import { createTestUser, deleteTestUser, signInLink } from "../test-support/fixtures.ts";
 import { localSupabaseAdmin } from "../test-support/local-supabase.ts";
 import { type ProcessedReel, seedProcessedReel } from "../test-support/pipeline-cache.ts";
@@ -23,7 +25,9 @@ import { claimableJobIds, runWorkerOnce } from "../test-support/worker.ts";
 // The owner fixes words in place in the Edit mode (app_docs/owner-edits.md;
 // owner decisions 2026-11-19): a text edit changes only the element edited,
 // its time stays tied to the spoken words, and Save keeps it in a new version
-// with a learning row. The fixture clip's first four words, "this is a short",
+// with a learning row. A caption's fix is also a transcript correction of the
+// reel: a Start over builds from the transcript with it, and the AI reads it.
+// The fixture clip's first four words, "this is a short",
 // show as captions; an accent added by hand (`accent-9`) shows the spoken word
 // "short" (w0004) too, so the same spoken word is on screen in two elements.
 
@@ -46,6 +50,8 @@ let page: Page;
 let edit: Edit;
 let placedVersionId: string;
 const extraKeys: string[] = [];
+// Where the Start over's scripted AI answer is written.
+let scriptDir: string;
 // The hook as the version draws it: no edit of another text may change it.
 let hookText: string;
 // The owner's words for the hook: as many letters as the version's own.
@@ -117,6 +123,7 @@ test.beforeAll(async ({ browser }, testInfo) => {
   });
   placedVersionId = saved.id;
   extraKeys.push(saved.key);
+  scriptDir = await mkdtemp(join(tmpdir(), "owner-edit-text-"));
   const context = await browser.newContext({
     baseURL: testInfo.project.use.baseURL,
     viewport: testInfo.project.use.viewport,
@@ -127,6 +134,7 @@ test.beforeAll(async ({ browser }, testInfo) => {
 
 test.afterAll(async () => {
   await page?.context().close();
+  if (scriptDir) await rm(scriptDir, { recursive: true, force: true });
   if (reel) {
     const { data } = await admin.from("versions").select("r2_key").eq("reel_id", reel.reelId);
     const keys = [
@@ -509,4 +517,156 @@ test("Save keeps the text edits in a new version Edited by you, with a learning 
       word_ids: [],
     },
   ]);
+  // The caption's fix is a transcript correction of the reel, by its spoken
+  // word; the accent's and the hook's texts are theirs only.
+  const { data: corrections } = await admin
+    .from("owner_word_corrections")
+    .select("word_id, text, original_text, owner_id")
+    .eq("reel_id", reel!.reelId);
+  expect(corrections).toEqual([
+    { word_id: "w0004", text: "brief", original_text: "short", owner_id: owner.id },
+  ]);
+});
+
+test("a font pair change keeps the caption fix: the new version is set in the new pair and still shows the owner's word", async () => {
+  await page.getByTestId("font-pair-bold").click();
+  const relayouts = async () => {
+    const { data } = await admin
+      .from("jobs")
+      .select("status, font_pair")
+      .eq("reel_id", reel!.reelId)
+      .eq("kind", "relayout");
+    return data ?? [];
+  };
+  await expect.poll(relayouts).toEqual([{ status: "queued", font_pair: "bold" }]);
+  const worker = await runWorkerOnce({ R2_KEY_PREFIX: CACHE_PREFIX });
+  expect(worker.code, worker.output).toBe(0);
+  expect(await relayouts()).toEqual([{ status: "done", font_pair: "bold" }]);
+
+  const { data: versions } = await admin
+    .from("versions")
+    .select("id, number, r2_key, engine_record")
+    .eq("reel_id", reel!.reelId)
+    .order("number");
+  const saved = versions!.at(-1) as {
+    id: string;
+    r2_key: string;
+    engine_record: { item: string; rule: string; outcome: string; reason: string }[];
+  };
+  await expect(page.locator(`[data-preview-version="${saved.id}"]`)).toBeVisible({
+    timeout: 30_000,
+  });
+  await ready();
+  // The owner's word is still on its caption, in the new pair.
+  expect(await texts(CAPTIONS)).toEqual(["this", "is", "a", "brief"]);
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed fixture
+  const transcript = transcriptSchema.parse(JSON.parse(await readFile(TRANSCRIPT, "utf8")));
+  const stored = parseEdit(
+    JSON.parse(new TextDecoder().decode((await storage.get(saved.r2_key))!)),
+    ISSEBYA_PRESET,
+    transcript,
+  );
+  if (!stored.ok) throw new Error(stored.reasons.join("; "));
+  expect(stored.edit.font_pair).toBe("bold");
+  expect(stored.edit.tracks.captions.find((item) => item.id === "cw0004")!.text).toBe("brief");
+  expect(stored.edit.owner!.texts).toContain("cw0004");
+  // The accent was made by hand for this spec and is in no AI answer, and
+  // this reel's AI answer wrote no hook, so the placement made again has
+  // neither: their texts could not be kept, and the version's record says so
+  // (an edit is never lost silently).
+  const lost = saved.engine_record.filter(
+    (note) => note.rule === "owner-edit" && note.outcome === "dropped",
+  );
+  expect(lost.map((note) => note.item)).toEqual([ACCENT, "hook"]);
+  expect(lost[0]!.reason).toMatch(/^your text "short and sweet" could not be kept: /);
+  expect(lost[1]!.reason).toMatch(
+    /^your text "A brief test for the real studio" could not be kept: /,
+  );
+  const { data: steps } = await admin
+    .from("steps")
+    .select("name, summary")
+    .eq("reel_id", reel!.reelId)
+    .eq("name", "relayout");
+  expect((steps ?? []).map((step) => (step as { summary: string }).summary).join(" ")).toMatch(
+    /1 of your edits kept, 2 of your edits could not be kept/,
+  );
+  await shot("text-5-font-pair.png");
+});
+
+test("Start over builds from the transcript with the caption's correction: the AI reads it, the captions show it, and no other edit is carried", async () => {
+  const startOver = page
+    .locator('section[aria-labelledby="versions-heading"]')
+    .getByRole("button", { name: "Start over" });
+  await expect(startOver).toBeEnabled({ timeout: 10_000 });
+  await startOver.click();
+  const queued = async () => {
+    const { data } = await admin
+      .from("jobs")
+      .select("status")
+      .eq("reel_id", reel!.reelId)
+      .eq("kind", "start_over");
+    return (data ?? []).map((job) => (job as { status: string }).status);
+  };
+  await expect.poll(queued).toEqual(["queued"]);
+  const worker = await runWorkerOnce({
+    R2_KEY_PREFIX: CACHE_PREFIX,
+    E2E_MOCK_AI_SCRIPT: await unchangedAnswerScript(scriptDir),
+  });
+  expect(worker.code, worker.output).toBe(0);
+  expect(await queued()).toEqual(["done"]);
+
+  const { data: versions } = await admin
+    .from("versions")
+    .select("id, number, r2_key, engine_record")
+    .eq("reel_id", reel!.reelId)
+    .order("number");
+  const saved = versions!.at(-1) as {
+    id: string;
+    r2_key: string;
+    engine_record: { item: string; rule: string }[];
+  };
+  await expect(page.locator(`[data-preview-version="${saved.id}"]`)).toBeVisible({
+    timeout: 30_000,
+  });
+  await ready();
+  // The new version's captions show the owner's word on its spoken word.
+  expect(await texts(CAPTIONS)).toEqual(["this", "is", "a", "brief"]);
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- the committed fixture
+  const transcript = transcriptSchema.parse(JSON.parse(await readFile(TRANSCRIPT, "utf8")));
+  const stored = parseEdit(
+    JSON.parse(new TextDecoder().decode((await storage.get(saved.r2_key))!)),
+    ISSEBYA_PRESET,
+    transcript,
+  );
+  if (!stored.ok) throw new Error(stored.reasons.join("; "));
+  expect(stored.edit.tracks.captions.find((item) => item.id === "cw0004")!.text).toBe("brief");
+  // Only the correction is the owner's in the new version: the hook is the
+  // AI's again, the hand-made accent is gone, and nothing is noted as kept or
+  // lost (a Start over carries no place, size or element text).
+  expect(stored.edit.owner).toEqual({ placed: [], texts: ["cw0004"] });
+  const hook = stored.edit.tracks.overlays.find((item) => item.kind === "hook")!;
+  expect(hook.text).not.toBe(HOOK_TEXT);
+  expect(stored.edit.tracks.overlays.some((item) => item.id === ACCENT)).toBe(false);
+  expect(saved.engine_record.filter((note) => note.rule === "owner-edit")).toEqual([]);
+  // What the AI was sent: the transcript with the owner's word, in both calls.
+  const record = JSON.parse(
+    new TextDecoder().decode(
+      (await storage.get(`${CACHE_PREFIX}reels/${reel!.reelId}/versions/${saved.id}.ai.json`))!,
+    ),
+  ) as { calls: { role: string; prompt: string }[] };
+  expect(record.calls.map((call) => call.role)).toEqual(["hook", "decide"]);
+  expect(record.calls[0]!.prompt).toContain("This is a brief test clip");
+  expect(record.calls[0]!.prompt).not.toContain("short");
+  expect(record.calls[1]!.prompt).toContain('"text": "brief"');
+  expect(record.calls[1]!.prompt).not.toContain('"text": "short"');
+  const { data: steps } = await admin
+    .from("steps")
+    .select("name, summary")
+    .eq("reel_id", reel!.reelId)
+    .eq("name", "decide")
+    .order("started_at");
+  const summary = (steps ?? []).map((step) => (step as { summary: string }).summary).at(-1)!;
+  expect(summary).toMatch(/started over from version 1, 1 word correction of yours kept/);
+  expect(summary).not.toMatch(/your edits/);
+  await shot("text-6-start-over.png");
 });

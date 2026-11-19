@@ -61,6 +61,7 @@ describe("public table grants", () => {
         "storage_deletions",
         "owner_moves",
         "owner_texts",
+        "owner_word_corrections",
       ]),
     );
     for (const table of tables) {

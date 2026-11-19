@@ -24,6 +24,7 @@ import {
 } from "./owner-edit.ts";
 import { type Preset, wordsText } from "./preset.ts";
 import { isQuestion, questionText } from "./question.ts";
+import { levelMark, withOwnerMarks } from "./owner-marks.ts";
 import type { CaptionItem, Edit } from "./schema.ts";
 import { STYLES } from "./variants.ts";
 import { resolveTimeline } from "./timeline.ts";
@@ -241,9 +242,9 @@ export function ownerTextOf(
 
 // Why a text cannot replace an element's, in the owner's words; null when it
 // can. `text` is clean (`cleanOwnerText`).
-function textProblem(target: Target, text: string): string | null {
+function textProblem(target: Target, text: string, carried = false): string | null {
   if (text.length === 0) return "A text cannot be empty";
-  const limit = ownerTextLimit(target.text, target.max);
+  const limit = carried ? target.max : ownerTextLimit(target.text, target.max);
   if (text.length > limit) {
     return `This text can be at most ${limit} characters (it has ${text.length})`;
   }
@@ -320,6 +321,65 @@ function captionsWithText(
   });
 }
 
+// A caption block with a run of one group's captions replaced (`run`, their
+// ids, by `replaced`, in their place in the track) and laid again: that group
+// wrapped to the block's width between whole captions, every other group on
+// its own lines, the block's top and centre line kept (`box`, the block as it
+// was). A block as wide as it was leaves its other captions exactly where
+// they are. The captions of the whole track, and the block as it is now.
+export function relaidBlock(
+  edit: Edit,
+  block: CaptionBlock,
+  groupId: string,
+  run: readonly string[],
+  replaced: readonly CaptionItem[],
+  box: { x: number; y: number; width: number; size: number | null },
+  context: Pick<Context, "transcript" | "preset" | "measurer">,
+): { captions: CaptionItem[]; block: CaptionBlock } {
+  const { preset, measurer } = context;
+  const gone = new Set(run);
+  const all = edit.tracks.captions;
+  const first = all.findIndex((item) => item.id === run[0]);
+  const others = all.filter((item) => !gone.has(item.id));
+  const at = all.slice(0, first).filter((item) => !gone.has(item.id)).length;
+  let captions = [...others.slice(0, at), ...replaced, ...others.slice(at)];
+  const blockNow: CaptionBlock = {
+    ...block,
+    groups: block.groups.map((group) => {
+      if (group.id !== groupId) return group;
+      const from = group.captions.indexOf(run[0]!);
+      const kept = group.captions.filter((id) => !gone.has(id));
+      const ids = [...kept.slice(0, from), ...replaced.map((item) => item.id), ...kept.slice(from)];
+      return { ...group, id: ids[0]!, captions: ids };
+    }),
+  };
+  const groupNow = blockNow.groups[block.groups.findIndex((group) => group.id === groupId)]!;
+  const groups = blockUnits({ ...edit, tracks: { ...edit.tracks, captions } }, blockNow, context);
+  const size = box.size!;
+  const laid = layBlock(
+    groups.map((group) => ({
+      units: group.units,
+      lines:
+        group.items[0]!.id === groupNow.id
+          ? wrapGroup(group.units, size, box.width, measurer)
+          : storedLines(group.items),
+    })),
+    box,
+    size,
+    preset.caption.lineGap,
+    measurer,
+    box.x + box.width / 2,
+  );
+  const sameWidth = Math.abs(laid.width - box.width) < 0.005;
+  const moved = new Set(groupNow.captions);
+  captions = captions.map((item) => {
+    const place = laid.places.get(item.id);
+    if (!place || (sameWidth && !moved.has(item.id))) return item;
+    return { ...item, position: { x: place.x, y: place.y, align: "left" as const } };
+  });
+  return { captions, block: blockNow };
+}
+
 // The edit with the owner's text edits applied, nothing else changed. Each
 // edited element keeps its place, its text size, its time and its spoken
 // words; its text is wrapped again inside its box's width (the engine's
@@ -341,7 +401,10 @@ function captionsWithText(
 export function applyOwnerTexts(
   edit: Edit,
   texts: readonly OwnerText[],
-  context: Context,
+  // `carried`: a text the owner wrote in an earlier version, carried into a
+  // new placement (`owner-carry.ts`). It was within its limit when written,
+  // so only the format's own length binds it here.
+  context: Context & { carried?: boolean },
 ): { ok: true; edit: Edit } | { ok: false; reasons: string[] } {
   if (texts.length === 0) return { ok: true, edit };
   const { transcript, headTrack, preset, measurer } = context;
@@ -359,7 +422,7 @@ export function applyOwnerTexts(
       reasons.push(target);
       continue;
     }
-    const problem = textProblem(target, entry.text);
+    const problem = textProblem(target, entry.text, context.carried === true);
     if (problem) reasons.push(`${entry.id}: ${problem}`);
     else if (cleanOwnerText(entry.text) !== entry.text) {
       reasons.push(`${entry.id}: its text has stray white space`);
@@ -377,12 +440,15 @@ export function applyOwnerTexts(
   };
   let { captions, overlays, transitions } = edit.tracks;
   let behind = edit.tracks.behind;
+  // The texts the owner wrote, marked in the version (`owner-marks.ts`).
+  const marks: string[] = [];
   // Each edited block's groups as they are now (an edited group may have
   // fewer captions), so a second edit in the same sentence lays the first.
   const blocksNow = new Map<string, CaptionBlock>();
   for (const { target, text } of targets) {
     if (target.kind === "overlay") {
       const { item } = target;
+      marks.push(item.id);
       const box = boxOf(item.id);
       const question = isQuestion(item);
       const lines = wrapToWidth(
@@ -410,6 +476,7 @@ export function applyOwnerTexts(
     }
     if (target.kind === "word") {
       const { item } = target;
+      marks.push(item.id);
       const box = boxOf(item.id);
       const lines = wrapToWidth(text, STYLES.bigWord.font, box.size!, box.width, measurer);
       const next = { ...withoutBreaks(item), text, ...breaksFor(lines) };
@@ -422,6 +489,7 @@ export function applyOwnerTexts(
     }
     if (target.kind === "level") {
       const { item, role } = target;
+      marks.push(levelMark(item.id, role));
       // The list as it is now (an earlier edit of its other level included).
       const now = transitions.find((entry) => entry.id === item.id)!;
       const levels: Levels = { ...now.levels!, [role]: { ...now.levels![role]!, text } };
@@ -471,55 +539,29 @@ export function applyOwnerTexts(
     }
     // A caption block's group.
     const { block, items } = target;
-    const box = boxOf(block.id);
     const edited = captionsWithText(items, text, context);
-    const gone = new Set(items.map((item) => item.id));
-    const first = captions.findIndex((item) => item.id === items[0]!.id);
-    const others = captions.filter((item) => !gone.has(item.id));
-    const at = captions.slice(0, first).filter((item) => !gone.has(item.id)).length;
-    captions = [...others.slice(0, at), ...edited, ...others.slice(at)];
-    // The block laid again: the edited group wrapped to the block's width,
-    // every other group on its own lines, on the block's centre line.
-    const now = { ...edit, tracks: { ...edit.tracks, captions } };
-    const current = blocksNow.get(block.id) ?? block;
-    const blockNow: CaptionBlock = {
-      ...current,
-      groups: current.groups.map((group) =>
-        group.id === items[0]!.id ? { ...group, captions: edited.map((item) => item.id) } : group,
-      ),
-    };
-    blocksNow.set(block.id, blockNow);
-    const groups = blockUnits(now, blockNow, context);
-    const size = box.size!;
-    const laid = layBlock(
-      groups.map((group) => ({
-        units: group.units,
-        lines:
-          group.items[0]!.id === items[0]!.id
-            ? wrapGroup(group.units, size, box.width, measurer)
-            : storedLines(group.items),
-      })),
-      box,
-      size,
-      preset.caption.lineGap,
-      measurer,
-      box.x + box.width / 2,
+    marks.push(...edited.map((item) => item.id));
+    const relaid = relaidBlock(
+      { ...edit, tracks: { ...edit.tracks, captions } },
+      blocksNow.get(block.id) ?? block,
+      items[0]!.id,
+      items.map((item) => item.id),
+      edited,
+      boxOf(block.id),
+      context,
     );
-    // A block as wide as it was leaves its other groups exactly where they are.
-    const sameWidth = Math.abs(laid.width - box.width) < 0.005;
-    const moved = new Set(edited.map((item) => item.id));
-    captions = captions.map((item) => {
-      const place = laid.places.get(item.id);
-      if (!place || (sameWidth && !moved.has(item.id))) return item;
-      return { ...item, position: { x: place.x, y: place.y, align: "left" as const } };
-    });
+    captions = relaid.captions;
+    blocksNow.set(block.id, relaid.block);
   }
   return {
     ok: true,
-    edit: {
-      ...edit,
-      tracks: { ...edit.tracks, captions, overlays, transitions, ...(behind ? { behind } : {}) },
-    },
+    edit: withOwnerMarks(
+      {
+        ...edit,
+        tracks: { ...edit.tracks, captions, overlays, transitions, ...(behind ? { behind } : {}) },
+      },
+      { texts: marks },
+    ),
   };
 }
 

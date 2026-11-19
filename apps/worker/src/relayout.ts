@@ -5,21 +5,27 @@ import {
   ISSEBYA_PRESET,
   type Measurer,
   type Preset,
+  type StoredCorrection,
   type StoredVersion,
   type Transcript,
   type VersionBlobs,
   type VersionRows,
+  applyWordCorrections,
   build,
+  carryOwnerEdits,
   editFromAnswer,
   headTrackSchema,
   keepOwnerAdds,
+  liveCorrections,
   ownerPictures,
+  withOwnerCutouts,
   parseDecideAnswer,
   parseEdit,
   parseHookAnswer,
   saveVersion,
   transcriptSchema,
   usedFreeField,
+  withWordCorrections,
 } from "@edit-issebya/edit";
 import type { Storage } from "@edit-issebya/storage";
 import { trace } from "@opentelemetry/api";
@@ -69,6 +75,9 @@ export interface RelayoutRun {
   recordStored?: (key: string, bytes: number) => Promise<void>;
   // The job's target font pair (`jobs.font_pair`).
   fontPair: FontPairId;
+  // The reel's transcript corrections (`word-corrections-store.ts`). None by
+  // default.
+  corrections?: () => Promise<StoredCorrection[]>;
   measurer?: (pair: FontPairId) => Promise<Measurer>;
   newId?: () => string;
   log?: (line: string) => void;
@@ -170,7 +179,12 @@ async function answerRecord(
 // the same and only the layout moves. The owner's pictures do not depend on
 // the font, so they stay: a card the owner gave a library photo is placed
 // again showing it, and a card the owner added is kept as it was
-// (`ownerPictures`, `keepOwnerAdds`). The result is saved as a new version
+// (`ownerPictures`, `keepOwnerAdds`). The captions are written from the
+// transcript with the reel's corrections (`owner-corrections.ts`), which win
+// over the answer's word fixes. Everything else the owner did by hand in the
+// version is carried too (`carryOwnerEdits`): the text fixes of its accents,
+// questions, big words, lists and hook and the places, measured and wrapped
+// again in the new pair. The result is saved as a new version
 // after the current one, with the same AI record copied under the new id, so
 // a later re-layout of it finds the same answer. Cut-outs are made only for
 // spans the new placement needs; the cache reuses the rest.
@@ -186,6 +200,7 @@ export async function runRelayout({
   env = process.env,
   recordStored,
   fontPair,
+  corrections = () => Promise.resolve([]),
   measurer = editMeasurer,
   newId = randomUUID,
   log = console.log,
@@ -224,6 +239,7 @@ export async function runRelayout({
         }
         const record = await answerRecord(storage, rows, keyPrefix, row);
         const answer = answerOfRecord(record, preset, transcript);
+        const fixes = liveCorrections(await corrections(), transcript);
         span.setAttributes({
           "relayout.version": row.number,
           "relayout.inputs": (["footage", "transcript", "head_track"] as const)
@@ -232,9 +248,10 @@ export async function runRelayout({
           "relayout.ai_record": record !== null,
           "relayout.ai_calls": record?.calls.length ?? 0,
         });
-        return { currentId, row, transcript, headTrack, preset, parsed, record, answer };
+        return { currentId, row, transcript, headTrack, preset, parsed, record, answer, fixes };
       });
-      const { currentId, row, transcript, headTrack, preset, parsed, record, answer } = loaded;
+      const { currentId, row, transcript, headTrack, preset, parsed, record, answer, fixes } =
+        loaded;
 
       // The layout: the answer placed in the job's pair, then built for its checks.
       const placed = await inSpan(
@@ -250,7 +267,7 @@ export async function runRelayout({
           // the engine places each such card at its photo's aspect.
           const answered = editFromAnswer(
             current,
-            answer,
+            withWordCorrections(answer, fixes),
             preset,
             transcript,
             headTrack,
@@ -263,9 +280,39 @@ export async function runRelayout({
             );
           }
           // The cards the owner added are in no answer: kept as they were.
+          // The reel's corrections next: a caption typed over several spoken
+          // words is one caption again, each corrected caption marked as the
+          // owner's. Then everything else the owner did by hand in the version
+          // (`edit.owner`): each element's text fix written again and each
+          // place kept (its top, its centre line and its size), measured and
+          // wrapped in the new pair; a box that no longer fits the safe zone
+          // is moved in and noted, never dropped (`carryOwnerEdits`).
+          const corrected = applyWordCorrections(
+            keepOwnerAdds(parsed.edit, answered.edit, { transcript, preset }),
+            fixes,
+            { transcript, headTrack, preset, measurer: measure },
+          );
+          const carried = carryOwnerEdits(parsed.edit, corrected.edit, {
+            transcript,
+            headTrack,
+            preset,
+            fromMeasurer: await measurer(parsed.edit.font_pair),
+            measurer: measure,
+          });
+          const marks = carried.edit.owner;
           const composed = {
             ...answered,
-            edit: keepOwnerAdds(parsed.edit, answered.edit, { transcript, preset }),
+            // A big word the owner placed or reworded: its cut-out decided again.
+            edit: withOwnerCutouts(
+              carried.edit,
+              [...(marks?.placed ?? []), ...(marks?.texts ?? [])],
+              { transcript, headTrack, preset, measurer: measure },
+            ),
+            record: [...answered.record, ...corrected.notes, ...carried.notes],
+            carried: {
+              kept: corrected.kept + carried.kept,
+              dropped: corrected.dropped + carried.dropped,
+            },
           };
           const { checks } = build(
             withMasks(composed.edit, transcript, headTrack),
@@ -338,8 +385,16 @@ export async function runRelayout({
         ),
       );
       log(engineRecordLine(reelId, saved.number, composed.record));
+      const { kept, dropped } = composed.carried;
+      const yours = [
+        ...(kept > 0 ? [`${kept} of your edits kept`] : []),
+        ...(dropped > 0 ? [`${dropped} of your edits could not be kept`] : []),
+      ];
       return {
-        what: `version ${saved.number}: set in the ${fontPair} font pair, from version ${row.number}`,
+        what: [
+          `version ${saved.number}: set in the ${fontPair} font pair, from version ${row.number}`,
+          ...yours,
+        ].join(", "),
         ai: NO_USAGE,
       };
     },

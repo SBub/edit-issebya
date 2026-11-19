@@ -188,7 +188,10 @@ export function build(
     options.engineRecord,
   );
   const spans = maskSpans(edit, transcript, preset);
-  const masks = spans.map((maskSpan) => {
+  // Only the full page draws the cut-out's composites and names its masks: a
+  // layer page needs none, so an edit whose masks are not made yet still
+  // builds its front page (the owner's editor and the carry read its boxes).
+  const masks = (layer === "full" ? spans : []).map((maskSpan) => {
     const mask = (edit.inputs.masks ?? []).find(
       (entry) =>
         Math.abs(entry.start - maskSpan.start) < 0.0005 &&

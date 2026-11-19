@@ -707,3 +707,83 @@ describe("save_version with the owner's edit", () => {
     expect((await movesOf(otherEdited)).map((row) => row.item)).toEqual(["accent-1"]);
   });
 });
+
+// The reel's transcript corrections (`owner_word_corrections`): one row per
+// spoken word the owner fixed in a caption, written by the worker only.
+describe("the owner's transcript corrections", () => {
+  const row = (reelId: string, ownerId: string, word: string, text: string) => ({
+    reel_id: reelId,
+    owner_id: ownerId,
+    word_id: word,
+    text,
+    original_text: "short",
+  });
+
+  it("keeps one row per spoken word: a later fix of the same word replaces it", async () => {
+    const reel = await insertReel(admin, { ownerId: userA.id, name: "c.mov", status: "processed" });
+    const first = await admin
+      .from("owner_word_corrections")
+      .upsert([row(reel, userA.id, "w0004", "brief"), row(reel, userA.id, "w0005", "")], {
+        onConflict: "reel_id,word_id",
+      });
+    expect(first.error).toBeNull();
+    const again = await admin
+      .from("owner_word_corrections")
+      .upsert([row(reel, userA.id, "w0004", "quick")], { onConflict: "reel_id,word_id" });
+    expect(again.error).toBeNull();
+    const { data } = await admin
+      .from("owner_word_corrections")
+      .select("word_id, text, original_text")
+      .eq("reel_id", reel)
+      .order("word_id");
+    expect(data).toEqual([
+      { word_id: "w0004", text: "quick", original_text: "short" },
+      { word_id: "w0005", text: "", original_text: "short" },
+    ]);
+    // A word id that is not one, and a text too long: refused.
+    for (const bad of [
+      row(reel, userA.id, "w 1; drop", "x"),
+      row(reel, userA.id, "w0006", "x".repeat(201)),
+    ]) {
+      const refused = await admin.from("owner_word_corrections").insert(bad);
+      expect(refused.error, bad.word_id).not.toBeNull();
+    }
+    const gone = await clientA.rpc("delete_reel", { p_reel_id: reel });
+    expect(gone.error).toBeNull();
+    const { data: left } = await admin
+      .from("owner_word_corrections")
+      .select("word_id")
+      .eq("reel_id", reel);
+    expect(left).toEqual([]);
+  });
+
+  it("lets the owner read their own corrections, no one else's, and write none", async () => {
+    const reel = await insertReel(admin, { ownerId: userA.id, name: "d.mov", status: "processed" });
+    const { error } = await admin
+      .from("owner_word_corrections")
+      .insert(row(reel, userA.id, "w0004", "brief"));
+    expect(error).toBeNull();
+    const mine = await clientA.from("owner_word_corrections").select("text").eq("reel_id", reel);
+    expect(mine.data).toEqual([{ text: "brief" }]);
+    const theirs = await clientB.from("owner_word_corrections").select("text").eq("reel_id", reel);
+    expect(theirs.data).toEqual([]);
+    const inserted = await clientA
+      .from("owner_word_corrections")
+      .insert(row(reel, userA.id, "w0005", "mine"));
+    expect(inserted.error).not.toBeNull();
+    const changed = await clientA
+      .from("owner_word_corrections")
+      .update({ text: "mine" })
+      .eq("reel_id", reel);
+    expect(changed.error).not.toBeNull();
+    const removed = await clientA.from("owner_word_corrections").delete().eq("reel_id", reel);
+    expect(removed.error).not.toBeNull();
+    const anon = await localSupabaseClient()
+      .from("owner_word_corrections")
+      .select("text")
+      .eq("reel_id", reel);
+    expect(anon.data ?? []).toEqual([]);
+    const { data } = await admin.from("owner_word_corrections").select("text").eq("reel_id", reel);
+    expect(data).toEqual([{ text: "brief" }]);
+  });
+});

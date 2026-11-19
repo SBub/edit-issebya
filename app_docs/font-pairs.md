@@ -94,6 +94,26 @@ widths, so Inter Tight Bold is set at its own spacing.
   back to it) is placed with no answer.
 - The owner's pictures do not depend on the font, so a relayout keeps them (`app_docs/photo-library.md`,
   `app_docs/owner-edits.md`):
+  - The captions are written from the transcript with the reel's corrections (owner decisions,
+    2026-11-19, option 1): the words the owner fixed in a caption (`owner_word_corrections`, read by
+    `liveCorrections`) win over the answer's `word_fixes` (`withWordCorrections`), and
+    `applyWordCorrections` (`packages/edit/src/owner-corrections.ts`) marks those captions as hers
+    and makes a caption she typed over several words one caption again. A caption's text is never
+    carried from the version itself.
+  - Everything else the owner did by hand in the version goes with it too (owner feedback,
+    2026-11-19): after `keepOwnerAdds` and the corrections, `carryOwnerEdits`
+    (`packages/edit/src/owner-carry.ts`) reads the version's marks (`edit.owner`) and carries each
+    one onto the new placement, found by its id (the answer is the same). A text the owner wrote on
+    an accent, a question, a big word, a list or the hook is written again and wrapped inside its
+    box in the new pair. A place keeps the owner's top, centre line (a question's left edge) and
+    text size, its lines set again to the owner's box width as the new pair measures them; a
+    caption block moves as one box; a card keeps its box and turn. A box that no longer fits the
+    safe zone in the new pair is moved in or made smaller the least it must, with a note in the
+    engine record (`rule` `owner-edit`), never dropped. A moved big word's cut-out is decided again
+    (`withOwnerCutouts`). The marks are written on the new version, so the next font pair change
+    carries them again. The step's line ends `, N of your edits kept` (the corrections shown and
+    the edits carried; and `, M of your edits could not be kept` when one found no element). The
+    rules are in `app_docs/owner-edits.md`, "What later steps do with an owner's version".
   - A card of the answer that the owner gave a library photo (`Change picture`) is placed again showing
     that photo. `ownerPictures(edit)` (`packages/edit/src/owner-add.ts`) reads the photos by the card's id
     (`visual-N`, the Nth visual of the answer in every version placed from it), `editFromAnswer` takes them

@@ -58,6 +58,27 @@ you`, like moves, and each one leaves a learning record (the text before, the te
   7. Limits: no element is added or deleted and no time changes. A text may be at most three times
      the characters of the text it replaces (never fewer than 40 allowed, never more than the
      format holds), and an empty text is refused; each with a clear message.
+- Owner feedback, 2026-11-19 (after the first Edit mode build):
+  1. The owner's text for a big word follows only the general length limit; the "one or two plain
+     words, at most 24 letters" rule stays the AI answer's alone.
+  2. A question always keeps its question mark (confirmed).
+  3. A font pair change and a Start over must not lose the owner's work: text fixes and places are
+     carried (rules in "What later steps do with an owner's version"), and an edit that cannot be
+     kept is noted, never dropped silently.
+- Owner decisions, 2026-11-19 (option 1, which replaces item 3 for a Start over):
+  1. A text fix made on a caption is a transcript correction: kept per spoken word for the reel
+     (she wins over the transcript and over the curator's word fixes) and lasting through any
+     processing again. The version she saved shows the fix only where she typed it.
+  2. Every rebuild uses the corrected transcript: a font pair change and a Start over build from
+     it, the captions show the corrections, the AI calls of a Start over (the hook and the
+     components) read the corrected words, and elements placed on a corrected word show them.
+  3. A fix typed into an accent, a question, a big word, a list or the hook stays on that element
+     only and is never a correction.
+  4. Start over carries no place, size or element text and not the hook's text (the AI picks
+     afresh): only the corrections, and the cards she added by hand.
+  5. A font pair change keeps her moves, sizes, caption block moves and element text fixes, plus
+     the corrections.
+  6. The learning record of a text fix keeps the text before and after (`owner_texts`).
 
 ## Overview
 
@@ -690,18 +711,107 @@ order by created_at;
 - Every outcome is a new version; nothing rewrites one (`app_docs/edit-model.md`). So Start over, the
   automatic decide, a font pair change and a going back all leave the owner's version in the list,
   with its bytes and its learning rows as they were.
-- Start over decides from version 1, so its new version has the engine's placement, not the owner's.
-- A font pair change (`relayout`) places the version's AI answer again in the new pair, so its new
-  version has the engine's placement too. The owner's moves are not carried into the new pair. The
-  owner's pictures are (`app_docs/font-pairs.md`, "The relayout job"): a card that shows a library
-  photo is placed again showing it, at the photo's aspect, and an added card is kept as it was (its
-  photo, word, time, box and turn).
-- Start over and a font pair change also drop the owner's text edits: both place the AI answer
-  again, and the engine writes each text from its spoken words and the curator's word fixes. The
-  owner's version with the fixed words stays in the list.
-- Going back to the owner's version copies its bytes: the moved texts and cards and the fixed
-  words come back.
+- **A caption fix is a transcript correction of the reel** (owner decisions, 2026-11-19, option 1).
+  A text the owner types into a caption says what was really spoken, so it is kept for the reel,
+  not only in the version (`packages/edit/src/owner-corrections.ts`, the `owner_word_corrections`
+  table below):
+  - on Save the worker compares the captions of the version edited with the owner's
+    (`captionCorrections`): each caption whose text or words changed gives one correction per
+    spoken word it covers. Its first word gets the caption's text, each other word an empty text
+    (a word the owner's caption no longer shows: she typed fewer words than were spoken). A
+    caption she did not change gives none, so a correction is only ever what she typed. A fix
+    typed into an accent, a question, a big word, a list or the hook is that element's only and
+    is never a correction;
+  - the corrections are written per spoken word, with the word as the transcript had it, before
+    the version is saved (`apps/worker/src/word-corrections-store.ts`, an upsert: a later fix of
+    the same word replaces the earlier one, and a retry writes the same rows again). The version
+    the owner saved shows the fix only where she typed it, exactly as she saw it in the editor;
+  - every rebuild reads the reel's corrections (`liveCorrections`: only those whose word is still
+    in the transcript with the text it was corrected from, so a reel processed again from other
+    words keeps none by accident) and builds from the corrected transcript. The owner wins over
+    the transcript and over the curator's `word_fixes` (`withWordCorrections` replaces the
+    curator's fix of a corrected word). The engine then writes every caption and every list
+    phrase placed on a corrected word with her text, and `applyWordCorrections` marks those
+    captions as hers (`edit.owner.texts`, so they are never counted as the curator's words
+    fixed), makes a caption she typed over several spoken words one caption again (`relaidBlock`
+    inside its block), and writes an accent, a question or a big word placed on a corrected word
+    with the corrected words, wrapped inside its box, with no mark (the text is the reel's, not
+    that element's). The hook is never touched: it is the AI's written line, not spoken words. A
+    caption run that cannot be one caption in the new placement (a text on screen hides part of
+    its words) is a note (`rule` `owner-edit`, `outcome` `dropped`), its first word still showing
+    her text;
+  - on a Start over and on the automatic decide the AI reads the corrected transcript too
+    (`correctedTranscript`): in the hook's call and in the components' script each corrected word
+    says her text inside the spoken word's punctuation, a word her caption does not show is left
+    out (its sentence end moved to the word before it), and every word keeps its id and times.
+- **A font pair change keeps the owner's work** (owner feedback, 2026-11-19). It places the same
+  AI answer again in another pair, with the corrections, and must not lose what she did by hand.
+  Her version says what that is: `edit.owner` (`packages/edit/src/owner-marks.ts`), `{ placed,
+texts }`, the ids of the items she placed (`applyOwnerMoves` marks each moved item; a moved
+  caption block: each of its captions) and of the texts she wrote (`applyOwnerTexts`; a list's
+  level is `<id>/<role>`), sorted, each once. A version she never edited has no `owner` field and
+  is placed exactly as before. `carryOwnerEdits(from, placed, context)`
+  (`packages/edit/src/owner-carry.ts`) carries each mark onto the new placement, found by its id
+  (the same answer gives the same ids), and marks it again, so the next change carries it too:
+  - a text of an accent, a question, a big word, a list or the hook: written on the element again
+    (`applyOwnerTexts`, bound only by the format's length: it was within its limit when written)
+    and wrapped inside the element's box in the new font. A caption's text is not carried from
+    the version: it is the reel's correction, already on the placement;
+  - a place: the owner's box keeps its top and its centre line (a question its left edge) and its
+    text size (the styles' base sizes are the same in every pair, so the owner's size relative to
+    the base is her size in pixels); its lines are set again to the owner's box width in the new
+    font, when that width gives the owner's own lines back in the owner's font (a list or a
+    caption block can hold a level or a group on more lines than its width needs, which is the
+    engine's choice and is made again). A caption block is found by its sentence (the block
+    showing most of the same spoken words). The box is then settled (`settleOwnerMove`): one that
+    no longer fits the safe zone is moved in, or made smaller, the least it must, with a note in
+    the engine record (`moved` or `shrunk`), never dropped. A VISUAL's box and turn do not depend
+    on the font and are kept as they were; a moved big word's cut-out is decided again. The
+    owner's pictures are kept as before (`app_docs/font-pairs.md`, "The relayout job":
+    `ownerPictures`, `keepOwnerAdds`);
+  - each edit that cannot be kept is one note in the new version's `engine_record`: the old item's
+    id, its component, `rule` `owner-edit`, `outcome` `dropped`, and a reason in plain words
+    (`your text "..." could not be kept: the new version has no accent on the same words`). The
+    step's line counts the corrections shown and the edits carried together: `, 3 of your edits
+kept, 2 of your edits could not be kept`.
+- **A Start over keeps only the corrections** (owner decisions, 2026-11-19, option 1). It is a
+  fresh AI answer: no place, no size, no caption block move and no element text of the owner's
+  version goes with it, and not the hook's text; the AI picks everything again from the corrected
+  transcript and the captions show her corrections. The cards she added by hand (`Add picture
+here`) are kept as they were (`keepOwnerAdds`, the reel's current version read beside version
+  1), since no answer can place them again. Nothing is noted as kept or lost; the step's line says
+  `, N word corrections of yours kept` (and `, M word corrections of yours could not be kept`).
+  The owner's own version stays in the list with everything in it.
+- Going back to the owner's version copies its bytes: the moved texts and cards, the fixed words
+  and the marks come back.
 - Export renders the owner's version like any version (`app_docs/export.md`).
+
+### The reel's transcript corrections (`owner_word_corrections`)
+
+One row per spoken word the owner corrected in a caption, per reel (migration
+`20261119154434_owner_word_corrections.sql`). No pipeline step writes it, so a reel processed
+again (transcribe and retime caches included) keeps it.
+
+| Column                     | What it holds                                                                                         |
+| -------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `reel_id`, `word_id`       | the reel and the spoken word's id in its transcript (`w0004`); the primary key, so one row per word   |
+| `owner_id`                 | whose correction                                                                                      |
+| `text`                     | what her caption shows for the word; empty: the word joined the caption of the word before it         |
+| `original_text`            | the word as the transcript had it: the correction holds only while the transcript still has this text |
+| `created_at`, `updated_at` | when the word was first corrected, and last                                                           |
+
+The learning record of each fix (the text before and after, per save) stays in `owner_texts`; this
+table holds only the reel's current corrections. RLS is on: `authenticated` only reads its own rows
+(`owner_word_corrections: owner selects own`), `anon` nothing, and only `service_role` (the worker's
+`owner_edit` job) writes. The rows go with their reel (`reel_id` cascades, so `delete_reel` removes
+them) and with the owner's account.
+
+```sql
+select word_id, original_text, text
+from owner_word_corrections
+where reel_id = '<reel>'
+order by word_id;
+```
 
 ## How to Use
 
@@ -903,6 +1013,44 @@ moved, a resized and a widened component match between preview and export`: the 
   saves the version, the preview draws the captions where the owner left them, and the learning
   row is `CAPTION`, `caption/default`, moved and resized, with both boxes and its wrap width. With
   `OWNER_EDIT_SHOTS` it keeps `captions-1-selected.png` to `captions-4-saved.png`.
+- Carrying the owner's work. `packages/edit/src/owner-carry.test.ts` (unit): into another font
+  pair, every element text fix and every place kept (the box's top, centre line and size; nothing
+  outside the safe zone) on a placement made with the reel's correction, the marks carried and
+  carried again by a second change; a caption's text never carried from the version (without the
+  correction the caption says its spoken word); a version the owner never edited left as the
+  engine placed it; a hook as large as the safe zone allows moved in or made smaller in three
+  other pairs, noted and never dropped. `schema.test.ts`: a big word takes an owner's longer text
+  with `breaks`. `apps/worker/src/owner-edit.test.ts`: a font pair change after the owner's edits
+  keeps the accent's text, size and top, the caption fix (from the reel's corrections), the
+  block's top and the hook's text, with the marks, no dropped note and the step's line (`N of your
+edits kept`), and a second change carries them again; the captions are written from the reel's
+  corrections, never from the version's own caption texts (a newer correction wins, and with none
+  the captions say the spoken words); a version never edited gets no such line.
+- Transcript corrections. `packages/edit/src/owner-corrections.test.ts` (unit): a save's
+  corrections are the one caption the owner's text changed, by its spoken word; a word her caption
+  no longer shows gets an empty text; another element's fix gives none; only corrections whose
+  word still has its original text hold; the transcript the AI reads says her words in the spoken
+  word's punctuation, leaves out a word she dropped and keeps its sentence end; in a rebuild the
+  corrections win over the curator's fix, show on the caption (marked as hers, never counted as a
+  word fixed) and on a component placed on the word, make a caption typed over several words one
+  caption again, and are noted when that cannot be. `apps/worker/src/owner-edit.test.ts`: a
+  caption fix is written per spoken word with the word as the transcript has it; a fix typed into
+  an accent or the hook writes none. `apps/worker/src/decide/run-decide.test.ts`: a Start over
+  after the owner's edits sends the corrected words to both AI calls, shows the corrections in the
+  captions over the curator's own fix, marks only those captions as hers, keeps no hook text,
+  accent text or block place of her version, notes nothing as kept or lost and says `N word
+corrections of yours kept`. `apps/studio/db-tests/owner-edits.test.ts`: one row per spoken
+  word (a later fix replaces it), a bad word id or a text too long refused, the rows gone with
+  their reel; the owner reads only her own rows and writes none, `anon` reads none.
+  `apps/studio/db-tests/grants.test.ts` lists the table. `apps/studio/e2e/owner-edit-text.spec.ts`:
+  the save writes one correction (`w0004`, `brief`, from `short`) and none for the accent's or the
+  hook's text; picking the `bold` pair makes a version set in `bold` whose caption still shows
+  `brief`, with `cw0004` among its marks, one dropped note each for the hand-made accent and for
+  the hook (this reel's AI answer wrote none) and the step's line `1 of your edits kept, 2 of your
+edits could not be kept`; Start over (with the mocked AI's unchanged answer) makes a version
+  whose captions read `this is a brief`, whose only mark is `cw0004`, with the AI's hook, without
+  the hand-made accent and with no `owner-edit` note, whose AI record shows `brief` and not
+  `short` in both calls, and whose step line says `1 word correction of yours kept`.
 - Text edits. `packages/edit/src/owner-text.test.ts` (unit): the stored text (one line, single
   spaces, no control character), the limit (three times, 40 at least, the format's most), the
   parsed edits and every malformed one, `spreadWords` against the reveal's own spread; an accent's
@@ -1026,6 +1174,28 @@ was deleted from the library`. Before the Delete, picking the `bold` font pair q
 - Never place an edited text again with the engine: its box keeps its top and its centre line (a
   question its left edge), the text wraps inside the box's width, and only the safe zone moves
   it (`settleOwnerMove`).
+- Never lose the owner's work in a font pair change without saying so: every mark of `edit.owner`
+  is carried onto the new placement (`carryOwnerEdits`) or noted in the new version's engine
+  record (`rule` `owner-edit`, `outcome` `dropped`) and counted in the step's line. A carried box
+  that no longer fits the safe zone is moved in or made smaller and noted, never dropped and never
+  left outside the safe zone.
+- Never carry a place, a size or an element's text into a Start over, and never the hook's text:
+  a Start over is a fresh answer with only the reel's corrections and the cards she added.
+- Never carry a component's fix or place onto another component: an element is found by its id
+  in the same answer.
+- Never treat a fix typed into an accent, a question, a big word, a list or the hook as a
+  transcript correction, and never change the hook with a correction.
+- Never build a rebuild (a font pair change, a Start over, the automatic decide) from the
+  transcript without the reel's live corrections, and never let the curator's `word_fixes` win
+  over one.
+- Never write `owner_word_corrections` from a pipeline step or from the studio: only the
+  `owner_edit` job writes it, with the service role; no step that processes a reel again touches
+  it.
+- Never write `edit.owner` by hand or from the engine: `applyOwnerMoves`, `applyOwnerTexts`,
+  `carryOwnerEdits` and `applyWordCorrections` write it, and a placement made again starts with
+  none.
+- Never apply the AI answer's big word rule to the owner's text: only the general length limit
+  binds it.
 - Never apply a save's parts in another order than added cards, text edits, moves: the studio's
   draft (`draftEdit`) and the worker both do, so the draft is what is saved.
 - Never save a text edit without its `owner_texts` row, nor the row without the version: both go
@@ -1096,14 +1266,16 @@ was deleted from the library`. Before the Delete, picking the `bold` font pair q
 - Not done yet: touch and phone (the button is hidden below `lg`), keyboard nudging, turning a
   text, deleting a card, timing changes (an added card always lasts 1.5 s), matching the picker's
   photos to the reel by their tags (it shows every ready photo), undo inside the editor (Cancel
-  drops everything), and carrying the owner's moves into another font pair.
+  drops everything), and carrying a swapped photo of an answer's card through a Start over (the
+  new answer's cards are other cards; a font pair change keeps it).
+- A correction is undone only by typing the spoken word back into the caption (it is then stored
+  as the word's own text); there is no list of corrections to clear yet. A reel processed again
+  whose transcript changed a corrected word drops that correction silently (`liveCorrections`).
 - A text edit keeps the element's box width, so a word added to a narrow box (a one-word accent)
   goes on a new line; the owner widens the box with an edge handle after. A word wider than the
   box makes the box that wide.
 - A LIST's number and a VISUAL's description are not edited. A caption block is edited one group
   at a time (the captions on screen at the paused moment), not the whole sentence at once.
-- The owner's text edits are not carried into another font pair or a Start over (see "What later
-  steps do with an owner's version"); carrying them is not done yet.
 - The export guardrail (`test:tools`, the owner's Mac only) has no case for an edited text yet:
   the builder draws an owner's text through the same `text` fields it always drew.
 - A caption block's time is its sentence's, and its box is the box around all its groups: at a
@@ -1116,4 +1288,5 @@ was deleted from the library`. Before the Delete, picking the `bold` font pair q
   `app_docs/preview.md` (the player's `overlay`, `controls` and `pause`), `app_docs/studio.md` (the
   job kind and the table), `app_docs/status.md` (the step's words), `app_docs/studio-reel-layout.md`
   (the control row), `app_docs/export.md` (the guardrail's case), `app_docs/failures.md` (Try again),
-  `app_docs/font-pairs.md` (a re-layout does not carry the moves).
+  `app_docs/font-pairs.md` (a re-layout carries the owner's work and the corrections),
+  `app_docs/decide-step.md` (the AI reads the corrected transcript).

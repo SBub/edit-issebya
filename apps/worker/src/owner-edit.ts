@@ -15,6 +15,7 @@ import {
   applyOwnerMoves,
   applyOwnerTexts,
   build,
+  captionCorrections,
   effectiveMoves,
   effectiveTexts,
   headTrackSchema,
@@ -43,6 +44,7 @@ import { cacheKey } from "./pipeline/fingerprint.ts";
 import { type ToolPaths } from "./pipeline/tools.ts";
 import { reelOf } from "./queue.ts";
 import { type SpawnTool, type StepContext, runToolsStep } from "./step-runner.ts";
+import type { WordCorrectionsStore } from "./word-corrections-store.ts";
 
 export const STEP = "owner_edit";
 
@@ -102,6 +104,9 @@ export interface OwnerEditRun {
   // The owner's ready library photos: a swap's or an added card's photo is
   // checked and sized from them, never from the job.
   photos?: PhotoLibrary;
+  // Where a caption's text fix is kept for the reel, per spoken word
+  // (`owner_word_corrections`).
+  corrections?: Pick<WordCorrectionsStore, "write">;
 }
 
 // The version the layout engine placed, which the owner's edits started from:
@@ -125,7 +130,12 @@ async function enginePlaced(rows: VersionRows, from: StoredVersion): Promise<Sto
 // (`edited_from_id`). Nothing but the moved components' place and size and the
 // edited elements' own text changes: a text edit never touches another
 // element, a time or a spoken word (`applyOwnerTexts`), and its learning
-// record goes to `owner_texts` in the same transaction. The owner's one hard rule is the safe zone: a move that leaves
+// record goes to `owner_texts` in the same transaction. A fix typed into a
+// caption is also a transcript correction of the reel: each caption it
+// changed is written per spoken word to `owner_word_corrections`
+// (`captionCorrections`) before the version is saved, so every later rebuild
+// reads the transcript with it; the version saved here still shows the fix
+// only where it was typed. The owner's one hard rule is the safe zone: a move that leaves
 // it, an id that is no text component, or a save that moves nothing is a
 // permanent failure, and no version is written. A moved big word's cut-out is
 // decided again (the head reaches it or not) and its mask made when missing.
@@ -147,6 +157,7 @@ export async function runOwnerEdit({
   measurer = editMeasurer,
   newId = randomUUID,
   photos,
+  corrections,
 }: OwnerEditRun): Promise<void> {
   return runToolsStep(ctx, {
     name: STEP,
@@ -300,6 +311,19 @@ export async function runOwnerEdit({
         parent: stepContext,
       });
       ctx.signal.throwIfAborted();
+
+      // The reel's transcript corrections: the captions the owner's text
+      // changed, per spoken word, with the word as the transcript has it.
+      // Written before the version, and the same again on a retry.
+      const spokenText = new Map(transcript.words.map((word) => [word.id, word.text]));
+      await corrections?.write(
+        reelId,
+        ctx.job.owner_id,
+        captionCorrections(baseEdit, moved, transcript, preset).map((entry) => ({
+          ...entry,
+          original: spokenText.get(entry.word) ?? "",
+        })),
+      );
 
       // The AI record first, under the new version's id, a copy of the edited
       // version's: the answer is the same, only the owner's layout differs.

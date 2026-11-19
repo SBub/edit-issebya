@@ -152,7 +152,12 @@ describe("applying the owner's moves", () => {
     expect(overlays.filter((item) => item.id !== "hook")).toEqual(
       original.filter((item) => item.id !== "hook"),
     );
-    expect({ ...applied.edit, tracks: null }).toEqual({ ...hook.edit, tracks: null });
+    // Outside the tracks, only the owner's mark for the moved item is new.
+    expect({ ...applied.edit, tracks: null }).toEqual({
+      ...hook.edit,
+      tracks: null,
+      owner: { placed: ["hook"], texts: [] },
+    });
   });
 
   it("resizes a text: the size scales the box, the corner stays", async () => {

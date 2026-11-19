@@ -24,6 +24,7 @@ import {
 } from "./caption-blocks.ts";
 import { type PlacedComponent, isCaptionBlock } from "./components.ts";
 import type { EngineComponent, EngineNote } from "./engine-note.ts";
+import { withOwnerMarks } from "./owner-marks.ts";
 import { MIN_SIZE_PX, balancedLines } from "./engine-place.ts";
 import { SAFE_ZONE } from "./engine-zones.ts";
 import { type Box, type HeadTrack, boundingBox, facesOver } from "./head-track.ts";
@@ -514,10 +515,21 @@ export function applyOwnerMoves(
   });
   return {
     ok: true,
-    edit: withPhotoInputs({
-      ...edit,
-      tracks: { ...edit.tracks, captions, overlays, transitions, ...(behind ? { behind } : {}) },
-    }),
+    edit: withOwnerMarks(
+      withPhotoInputs({
+        ...edit,
+        tracks: { ...edit.tracks, captions, overlays, transitions, ...(behind ? { behind } : {}) },
+      }),
+      // What the owner placed, marked in the version: each item moved, a moved
+      // caption block as each of its captions.
+      {
+        placed: [
+          ...[...byId.keys()].filter((id) => !isCaptionBlockId(id)),
+          ...boxes.keys(),
+          ...captionPlaces.keys(),
+        ],
+      },
+    ),
   };
 }
 
