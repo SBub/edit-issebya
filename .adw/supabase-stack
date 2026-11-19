@@ -21,6 +21,8 @@ PORT_MAP="54430:54450 54431:54451 54432:54452 54433:54453 54434:54454 54435:5445
 # The services CI excludes too (.github/workflows/ci.yml).
 EXCLUDE=storage-api,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
 LOCK_WAIT=120
+# How long to wait for the stack's containers to report healthy after a start or a reset.
+READY_WAIT=120
 
 fail() {
   printf 'supabase-stack: %s\n' "$1" >&2
@@ -212,6 +214,29 @@ reset_if_needed() {
   printf '%s\n' "$current" >"$STACK/applied.sha256"
 }
 
+# `supabase db reset` restarts the auth and realtime containers and returns while they are still
+# "health: starting"; a test that opens the Realtime websocket in that window fails with
+# "channel error: transport failure". Wait until every container that has a healthcheck reports
+# healthy (the CLI labels its containers with the project id) before anything is printed.
+wait_ready() {
+  local start ids id state pending
+  start="$(date +%s)"
+  while :; do
+    pending=""
+    ids="$(docker ps -q --filter "label=com.supabase.cli.project=$PROJECT_ID" 2>>"$LOG")"
+    for id in $ids; do
+      state="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$id" 2>>"$LOG")"
+      case "$state" in
+        "" | healthy) ;;
+        *) pending="$pending $(docker inspect -f '{{.Name}}' "$id" 2>>"$LOG")" ;;
+      esac
+    done
+    [ -z "$pending" ] && return 0
+    [ $(($(date +%s) - start)) -lt "$READY_WAIT" ] || fail "containers not healthy after ${READY_WAIT}s:$pending"
+    sleep 1
+  done
+}
+
 env_value() {
   printf '%s\n' "$env_out" | sed -n "s/^$1=\"\{0,1\}\([^\"]*\)\"\{0,1\}\$/\1/p"
 }
@@ -244,9 +269,11 @@ case "$cmd" in
     start_if_needed
     if [ "$cmd" = up ]; then
       reset_if_needed ""
+      wait_ready
       print_env
     else
       reset_if_needed 1
+      wait_ready
     fi
     ;;
   release)
