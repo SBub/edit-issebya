@@ -318,7 +318,11 @@ describe("the face", () => {
     expect(zone).toBe("head-top");
     // One line (the behind word item has no breaks), as wide as S.
     expect(result.placed!.lines).toEqual(["start here"]);
-    expect(size).toBe(Math.floor((S.right - S.left) / measurer.width("simple", 1, "start here")));
+    // Measured in the accent face.
+    expect(size).toBe(Math.floor((S.right - S.left) / measurer.width("artistic", 1, "start here")));
+    expect(size).not.toBe(
+      Math.floor((S.right - S.left) / measurer.width("simple", 1, "start here")),
+    );
     expect(Math.abs((box.top + box.bottom) / 2 - 700)).toBeLessThanOrEqual(1);
     expect(Math.abs((box.left + box.right) / 2 - (S.left + S.right) / 2)).toBeLessThanOrEqual(1);
     expect(outcomes(result)).toEqual(["placed"]);

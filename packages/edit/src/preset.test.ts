@@ -93,11 +93,11 @@ describe("the transition library", () => {
     expect(bigWord.lead).toBeLessThanOrEqual(1);
   });
 
-  it("sets captions and the big word in the simple font, accents in the artistic one, all white", () => {
+  it("sets captions in the simple font, accents and the big word in the artistic one, all white", () => {
     expect([STYLES.caption.font, STYLES.accent.font, STYLES.bigWord.font]).toEqual([
       "simple",
       "artistic",
-      "simple",
+      "artistic",
     ]);
     expect([STYLES.caption.color, STYLES.accent.color, STYLES.bigWord.color]).toEqual([
       "#FFFFFF",

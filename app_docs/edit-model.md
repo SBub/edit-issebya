@@ -129,8 +129,8 @@ and rule 6 (`engine-place.ts`).
   Zones button. Module constants, not `Preset` fields: no preset and no change request moves them.
 - Fonts: a font pair (`src/font-pairs.ts`, `FONT_PAIRS`, the seven approved pairs; `app_docs/font-pairs.md`)
   gives two roles. `artistic` (the classic pair: Playfair Display Italic) writes the accents, a transition's
-  key phrase and number and the hook; `simple` (Inter Tight SemiBold) writes captions, the big word and a
-  transition's lead-in. Each face is a static OFL instance in `assets/fonts/`. The builder lists a pair's
+  key phrase and number, the hook and the big word;
+  `simple` (Inter Tight SemiBold) writes captions and a transition's lead-in. Each face is a static OFL instance in `assets/fonts/`. The builder lists a pair's
   font file once even when both roles share it. All text is
   white (`#FFFFFF`). Sizes are not here: the style table (`STYLES` in `src/variants.ts`) holds the
   bases, `accent` 110 px and `caption` 50 px, and the big word's `largest-fit`. An item with no size
@@ -548,7 +548,10 @@ deterministic (no clock, no randomness, no I/O). Modules in `packages/edit/src`:
   words `hides` the captions while it shows, and for a box its `aspect` and `width` share, for a stack its
   `levels`. It holds no size and no position. A wrong field or an unknown zone fails typecheck.
 - `STYLES` is the style table: `accent` (`artistic`, white, base 110), `caption` (`simple`, white,
-  base 50), `bigWord` (`simple`, white, `largest-fit`). Two entries on one style share its base. The
+  base 50), `bigWord` (`artistic`, white, `largest-fit`: Inter Tight Bold in the `modern` pair, each pair's accent face in the
+  others). The placer measures the big word's largest fit in that face (`entry.style.font`,
+  `engine-place.ts`), `placedBigWord` (`src/behind.ts`) its box, and the builder writes its class
+  from the same style (`f-artistic`), so the size is the drawn word's. Two entries on one style share its base. The
   base is the cap: a text is never set above it, and shrinks from it.
 - Timing options: `words`; `words-lead` (a lead before the first word, at least a minimum: the big
   word, 0.2 s and 1.5 s); `words-min-max` (the visual, 1 s to 2 s); `words-entrance` (the list, 0.3 s

@@ -423,7 +423,7 @@ describe("big words: the cut-out only where the head reaches them", () => {
     ]);
     expect(maskSpans(edit, transcript, ISSEBYA_PRESET)).toEqual([]);
     expect(html).not.toContain(".cutout");
-    expect(html).toContain(`<div id="big-word-1" class="clip word f-simple"`);
+    expect(html).toContain(`<div id="big-word-1" class="clip word f-artistic"`);
     expect(html).toContain(">distribution</div>");
     expect(checks).toEqual([]);
   });

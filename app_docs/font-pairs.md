@@ -1,9 +1,11 @@
 # Font pairs
 
 A font pair is the two fonts a reel is set in. The **simple** font writes everything a viewer must read
-at a glance (captions, the big word behind the speaker, the hook, questions and a list's lead-in and
-numbers); the **artistic** font writes the accents only (an accent's words, a list's key phrase, the
-hook's text, the accent that carries a question). Simple is always readable; artistic is the flourish.
+at a glance (captions, the hook, questions and a list's lead-in and
+numbers); the **artistic** font writes the accents (an accent's words, a list's key phrase, the
+hook's text, the accent that carries a question) and the big word behind the speaker (Inter Tight
+Bold in `modern`, each pair's accent face in the others). Simple is always readable; artistic is the
+flourish.
 
 ## The pairs
 
@@ -38,8 +40,7 @@ widths, so Inter Tight Bold is set at its own spacing.
   serve).
 - `packages/edit/assets/fonts/`: fourteen static TrueType instances (no variation table, so HarfBuzz measures
   the very file the page loads) and one `OFL-<Family>.txt` per family.
-- `STYLES` (`src/variants.ts`) picks a role per text: `accent` is `artistic`; `caption` and `bigWord` are
-  `simple`. A text item's `font` is a role, never a file.
+- `STYLES` (`src/variants.ts`) picks a role per text: `accent` and `bigWord` are `artistic`; `caption` is `simple`. A text item's `font` is a role, never a file.
 
 ## The edit and the measurer
 

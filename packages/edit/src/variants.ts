@@ -62,8 +62,9 @@ export const STYLES = {
   accent: { font: "artistic", color: WHITE, base: 110 },
   // Captions and a list's lead-in.
   caption: { font: "simple", color: WHITE, base: 50 },
-  // The big word behind the speaker: as large as its zone allows.
-  bigWord: { font: "simple", color: WHITE, base: "largest-fit" },
+  // The big word behind the speaker: as large as its zone allows, in the
+  // accent face.
+  bigWord: { font: "artistic", color: WHITE, base: "largest-fit" },
 } satisfies Record<string, TextStyle>;
 
 // A text: its style (font, colour, base size). Text is `front` or `behind`.
