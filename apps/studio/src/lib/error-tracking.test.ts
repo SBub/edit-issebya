@@ -37,11 +37,15 @@ afterEach(() => {
 
 describe("errorTrackingConfig and serverErrorCapture", () => {
   it.each([
-    { projectToken: undefined, host: "https://eu.i.posthog.com" },
-    { projectToken: "token", host: undefined },
-    { projectToken: "  ", host: "https://eu.i.posthog.com" },
-    { projectToken: "token", host: " " },
-  ])("is closed without both variables (%o) and builds no client", (env) => {
+    { vercelEnv: "production", projectToken: undefined, host: "https://eu.i.posthog.com" },
+    { vercelEnv: "production", projectToken: "token", host: undefined },
+    { vercelEnv: "production", projectToken: "  ", host: "https://eu.i.posthog.com" },
+    { vercelEnv: "production", projectToken: "token", host: " " },
+    // Filled variables outside production: development, preview or unset.
+    { vercelEnv: "development", projectToken: "token", host: "https://eu.i.posthog.com" },
+    { vercelEnv: "preview", projectToken: "token", host: "https://eu.i.posthog.com" },
+    { vercelEnv: undefined, projectToken: "token", host: "https://eu.i.posthog.com" },
+  ])("is closed outside production or without both variables (%o), no client", (env) => {
     expect(errorTrackingConfig(env)).toBeNull();
     const factory = vi.fn();
     const capture = serverErrorCapture(errorTrackingConfig(env), factory);
@@ -54,6 +58,7 @@ describe("errorTrackingConfig and serverErrorCapture", () => {
     const client = { captureException: vi.fn(), shutdown: vi.fn(async () => undefined) };
     const factory = vi.fn(() => client);
     const config = errorTrackingConfig({
+      vercelEnv: "production",
       projectToken: " token ",
       host: "https://eu.i.posthog.com",
     });

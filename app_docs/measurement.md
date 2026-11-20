@@ -735,8 +735,8 @@ does. Retention is the cut-out's (15 days).
 - Worker, AI generations: `POSTHOG_PROJECT_TOKEN` and `POSTHOG_HOST` both set (the variables of the
   worker's error tracking, `app_docs/error-tracking.md`); without both no client is built and no event
   is sent. `apps/worker/.env.production` has them. In `apps/worker/.env.development` the token is
-  empty, so development jobs and the evals send nothing until it is filled, and filling it turns the
-  development error tracking on too. `POSTHOG_PRIVACY_MODE`: content is sent only when it is exactly
+  empty, so development jobs and the evals send nothing until it is filled; filling it does not turn
+  error tracking on, which is production only. `POSTHOG_PRIVACY_MODE`: content is sent only when it is exactly
   `false` (placeholder `true` in `apps/worker/.env.example`). `apps/studio/test-support/worker.ts`
   blanks the token, so a spec never sends an event. No turbo task reads these.
 - Studio: `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` and `NEXT_PUBLIC_POSTHOG_HOST` (inlined at build, empty in

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { startStudioAnalytics, studioPosthogOptions } from "./analytics";
+import { isProductionBuild, startStudioAnalytics, studioPosthogOptions } from "./analytics";
 
 function client() {
   return { init: vi.fn(), register: vi.fn() };
@@ -33,5 +33,19 @@ describe("studioPosthogOptions", () => {
     const options = studioPosthogOptions("https://posthog.example", false);
     expect(options).toMatchObject({ api_host: "https://posthog.example", persistence: "memory" });
     expect(options).not.toHaveProperty("cookieless_mode");
+  });
+
+  it("captures uncaught browser errors only in production", () => {
+    expect(studioPosthogOptions("https://posthog.example", false).capture_exceptions).toBe(false);
+    expect(studioPosthogOptions("https://posthog.example", false, true).capture_exceptions).toBe(
+      true,
+    );
+  });
+
+  it("isProductionBuild is true only for production", () => {
+    expect(isProductionBuild("production")).toBe(true);
+    for (const env of ["preview", "development", "", undefined]) {
+      expect(isProductionBuild(env)).toBe(false);
+    }
   });
 });

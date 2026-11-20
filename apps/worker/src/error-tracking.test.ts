@@ -9,7 +9,11 @@ import { StepError } from "./step-runner.ts";
 const R2_OBJECT = "https://x.r2.cloudflarestorage.com/k";
 const SIGNED_URL = `${R2_OBJECT}?X-Amz-Signature=abc`;
 
-const ENV = { POSTHOG_PROJECT_TOKEN: "token", POSTHOG_HOST: "https://eu.i.posthog.com" };
+const ENV = {
+  POSTHOG_PROJECT_TOKEN: "token",
+  POSTHOG_HOST: "https://eu.i.posthog.com",
+  WORKER_ENV: "production",
+};
 
 function fakeClient() {
   return {
@@ -47,26 +51,34 @@ function refusedDecide() {
 describe("createErrorTracker", () => {
   it.each([
     {},
-    { POSTHOG_PROJECT_TOKEN: "token" },
-    { POSTHOG_HOST: "https://eu.i.posthog.com" },
-    { POSTHOG_PROJECT_TOKEN: " ", POSTHOG_HOST: "https://eu.i.posthog.com" },
-  ])("builds no client without both variables (%o) and captures nothing", async (env) => {
-    const factory = vi.fn();
-    const tracker = createErrorTracker(env, factory);
-    expect(tracker.enabled).toBe(false);
-    expect(() => {
-      tracker.stepFailed(step(new Error("x")));
-      tracker.jobFailed({
-        job: TEST_JOB,
-        error: new Error("x"),
-        tail: "x",
-        failure: { kind: "failed", rules: null },
-      });
-      tracker.crashed(new Error("x"));
-    }).not.toThrow();
-    await expect(tracker.shutdown()).resolves.toBeUndefined();
-    expect(factory).not.toHaveBeenCalled();
-  });
+    { WORKER_ENV: "production" },
+    { POSTHOG_PROJECT_TOKEN: "token", WORKER_ENV: "production" },
+    { POSTHOG_HOST: "https://eu.i.posthog.com", WORKER_ENV: "production" },
+    { ...ENV, POSTHOG_PROJECT_TOKEN: " " },
+    // Filled variables outside production: development, unset, or anything else.
+    { ...ENV, WORKER_ENV: "development" },
+    { ...ENV, WORKER_ENV: undefined },
+    { ...ENV, WORKER_ENV: "" },
+  ])(
+    "builds no client without both variables or outside production (%o) and captures nothing",
+    async (env) => {
+      const factory = vi.fn();
+      const tracker = createErrorTracker(env, factory);
+      expect(tracker.enabled).toBe(false);
+      expect(() => {
+        tracker.stepFailed(step(new Error("x")));
+        tracker.jobFailed({
+          job: TEST_JOB,
+          error: new Error("x"),
+          tail: "x",
+          failure: { kind: "failed", rules: null },
+        });
+        tracker.crashed(new Error("x"));
+      }).not.toThrow();
+      await expect(tracker.shutdown()).resolves.toBeUndefined();
+      expect(factory).not.toHaveBeenCalled();
+    },
+  );
 
   it("captures a decide refusal with its rules and rounds, never the request", () => {
     const client = fakeClient();

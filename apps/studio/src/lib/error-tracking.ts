@@ -32,24 +32,28 @@ export const DISABLED_CAPTURE: ErrorCapture = {
 };
 
 interface ErrorTrackingEnv {
+  vercelEnv: string | undefined;
   projectToken: string | undefined;
   host: string | undefined;
 }
 
 /**
- * The same two public variables the studio browser reads, by their literal
- * names so Next inlines them. Null (closed) unless both are set: they are
- * empty in development, CI and E2E.
+ * The same public variables the studio browser reads, by their literal names
+ * so Next inlines them. Null (closed) unless both PostHog variables are set
+ * and this is the production deployment (NEXT_PUBLIC_VERCEL_ENV, set by
+ * Vercel): development, previews, CI and E2E send nothing, whatever the env
+ * files hold (the variables stay for feature flags and analytics).
  */
 export function errorTrackingConfig(
   env: ErrorTrackingEnv = {
+    vercelEnv: process.env.NEXT_PUBLIC_VERCEL_ENV,
     projectToken: process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN,
     host: process.env.NEXT_PUBLIC_POSTHOG_HOST,
   },
 ): { projectToken: string; host: string } | null {
   const projectToken = env.projectToken?.trim();
   const host = env.host?.trim();
-  if (!projectToken || !host) return null;
+  if (env.vercelEnv !== "production" || !projectToken || !host) return null;
   return { projectToken, host };
 }
 

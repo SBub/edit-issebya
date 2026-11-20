@@ -22,6 +22,7 @@ vi.stubGlobal("window", win);
 const { capture, captureException, identify, reportBrowserFailure } = await import("./track");
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   delete win.__capturedEvents;
   posthog.capture.mockClear();
   posthog.identify.mockClear();
@@ -88,8 +89,19 @@ describe("captureException", () => {
     expect(() => captureException("studio: upload failed", properties)).not.toThrow();
   });
 
-  it("sends to PostHog once loaded", () => {
+  it("sends nothing to PostHog outside production, even loaded", () => {
     vi.stubGlobal("navigator", { webdriver: false });
+    posthog.__loaded = true;
+    for (const env of ["development", "preview", ""]) {
+      vi.stubEnv("NEXT_PUBLIC_VERCEL_ENV", env);
+      captureException("studio: upload failed", properties);
+    }
+    expect(posthog.captureException).not.toHaveBeenCalled();
+  });
+
+  it("sends to PostHog once loaded, in production", () => {
+    vi.stubGlobal("navigator", { webdriver: false });
+    vi.stubEnv("NEXT_PUBLIC_VERCEL_ENV", "production");
     posthog.__loaded = true;
     captureException("studio: upload failed", properties);
     expect(posthog.captureException).toHaveBeenCalledOnce();
@@ -120,8 +132,20 @@ describe("studio_failure_action", () => {
 });
 
 describe("reportBrowserFailure", () => {
-  it("sends an exception once PostHog is loaded", () => {
+  it("warns and sends nothing outside production, even loaded", () => {
     vi.stubGlobal("navigator", { webdriver: false });
+    vi.stubEnv("NEXT_PUBLIC_VERCEL_ENV", "development");
+    posthog.__loaded = true;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    reportBrowserFailure("studio: realtime channel dropped", { reel_id: "r", status: "CLOSED" });
+    expect(posthog.captureException).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledOnce();
+    warn.mockRestore();
+  });
+
+  it("sends an exception once PostHog is loaded, in production", () => {
+    vi.stubGlobal("navigator", { webdriver: false });
+    vi.stubEnv("NEXT_PUBLIC_VERCEL_ENV", "production");
     posthog.__loaded = true;
     const error = vi.spyOn(console, "warn").mockImplementation(() => {});
     reportBrowserFailure("studio: realtime channel dropped", { reel_id: "r", status: "TIMED_OUT" });
