@@ -27,6 +27,7 @@ let failedChange: string;
 let failedRender: string;
 let doneProcess: string;
 let failedB: string;
+let failedRelayout: string;
 
 const REQUEST = "move the title lower";
 const INPUTS = {
@@ -103,6 +104,10 @@ beforeAll(async () => {
     kind: "render",
     version_id: versionA,
   });
+  failedRelayout = await endedJob(reelA, userA.id, "failed", {
+    kind: "relayout",
+    font_pair: "modern",
+  });
   doneProcess = await endedJob(reelA, userA.id, "done");
   failedB = await endedJob(reelB, userB.id, "failed");
 });
@@ -138,6 +143,23 @@ describe("retry jobs", () => {
     ]);
     expect(await retriesOf(failedRender)).toEqual([
       expect.objectContaining({ kind: "render", version_id: versionA, status: "queued" }),
+    ]);
+  });
+
+  it("lets the owner retry a failed relayout job only with its font pair", async () => {
+    const without = await clientA
+      .from("jobs")
+      .insert({ reel_id: reelA, kind: "relayout", retry_of_job_id: failedRelayout });
+    expect(without.error?.code).toBe("42501");
+    const { error } = await clientA.from("jobs").insert({
+      reel_id: reelA,
+      kind: "relayout",
+      font_pair: "modern",
+      retry_of_job_id: failedRelayout,
+    });
+    expect(error).toBeNull();
+    expect(await retriesOf(failedRelayout)).toEqual([
+      expect.objectContaining({ kind: "relayout", status: "queued" }),
     ]);
   });
 
