@@ -25,15 +25,26 @@ export interface StudioAnalyticsBrowser {
  * user. Never opt_in_capturing / opt_out_capturing: they write consent to
  * storage.
  */
-export function studioPosthogOptions(host: string, debug: boolean) {
+export function studioPosthogOptions(host: string, debug: boolean, production = false) {
   return {
     api_host: host,
     defaults: "2026-01-30",
     persistence: "memory",
     disable_session_recording: true,
-    capture_exceptions: true,
+    // Uncaught browser errors only in production (app_docs/error-tracking.md).
+    capture_exceptions: production,
     debug,
   } as const;
+}
+
+/**
+ * Exception capture is on only for the production deployment. Reads
+ * NEXT_PUBLIC_VERCEL_ENV by its literal name so Next inlines it.
+ */
+export function isProductionBuild(
+  vercelEnv: string | undefined = process.env.NEXT_PUBLIC_VERCEL_ENV,
+): boolean {
+  return vercelEnv === "production";
 }
 
 /** The two PostHog calls start-up needs; an adapter over posthog satisfies it. */

@@ -10,18 +10,27 @@ Production failures of the studio (server and browser), the landing page (server
 to PostHog error tracking in project 312096 as `$exception` events. Each carries a stable message (so
 every occurrence groups into one PostHog issue), the property `app` (`studio`, `web` or `worker`),
 the provider's error code or name and, where a user is known, the Supabase user id as `distinct_id`.
-Nothing is sent, and no client is built, without the PostHog variables.
+Nothing is sent, and no client is built, without the PostHog variables or outside production:
+development, previews, CI and E2E never send an exception, even with the variables filled (they stay
+set for prompts, AI traces, feature flags and analytics).
 
 ## How it works
 
 ### Gate per app
 
-- Studio server and browser: `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` and `NEXT_PUBLIC_POSTHOG_HOST` both
-  set (`errorTrackingConfig` in `apps/studio/src/lib/error-tracking.ts`).
+- Studio server: `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` and `NEXT_PUBLIC_POSTHOG_HOST` both set and
+  `NEXT_PUBLIC_VERCEL_ENV === "production"` (`errorTrackingConfig` in
+  `apps/studio/src/lib/error-tracking.ts`).
+- Studio browser: `NEXT_PUBLIC_VERCEL_ENV === "production"` (`isProductionBuild` in
+  `apps/studio/src/lib/analytics.ts`) turns on posthog-js's `capture_exceptions` and lets
+  `captureException` and `reportBrowserFailure` send. PostHog itself still starts wherever the two
+  public variables are set (events, feature flags), but outside production it sends no exception.
 - Landing page server: the same two variables and `NEXT_PUBLIC_VERCEL_ENV === "production"`
   (`errorTrackingConfig` in `apps/web/src/lib/error-tracking.ts`), like its browser analytics.
-- Worker: `POSTHOG_PROJECT_TOKEN` and `POSTHOG_HOST` both set (`createErrorTracker` in
-  `apps/worker/src/error-tracking.ts`).
+- Worker: `POSTHOG_PROJECT_TOKEN` and `POSTHOG_HOST` both set and `WORKER_ENV === "production"`
+  (`createErrorTracker` in `apps/worker/src/error-tracking.ts`). `worker:prod` and
+  `compose.prod.yaml` set `WORKER_ENV=production`; `compose.yaml` sets `development`, and an unset
+  value counts as development.
 - The gate is read per call, never at module load. A closed gate returns `DISABLED_CAPTURE` (server)
   or `DISABLED_TRACKER` (worker) and builds no client.
 
@@ -68,7 +77,7 @@ Nothing is sent, and no client is built, without the PostHog variables.
 - `apps/studio/src/components/UploadForm.tsx` captures one `studio: upload failed` per failed upload,
   never on cancel, with the routes' answer only.
 - `reportBrowserFailure(message, properties)` in `apps/studio/src/lib/track.ts` captures a handled
-  browser failure through `captureException` when PostHog is loaded; without PostHog it records it
+  browser failure through `captureException` when PostHog is loaded and the build is production; otherwise it records it
   for the test hook and prints it with `console.warn` only. `LiveReel` reports
   `studio: realtime channel dropped` once per status change when the reel's Realtime channel turns
   `CHANNEL_ERROR`, `TIMED_OUT` or `CLOSED` (never for the close an unmount causes).
@@ -112,8 +121,9 @@ Nothing is sent, and no client is built, without the PostHog variables.
   `failure.reasons`, so the trace view shows the reasons.
 - Captured tool output lines are INFO records with the `stream` attribute: nothing is an ERROR
   because it went to stderr.
-- With the PostHog gate closed, `createErrorTracker` returns `DISABLED_TRACKER`: nothing is captured
-  or sent to PostHog, but the failure records above are still exported.
+- With the gate closed (development, or no PostHog variables), `createErrorTracker` returns
+  `DISABLED_TRACKER`: nothing is captured or sent to PostHog Error Tracking, but the failure records
+  above are still exported (local Grafana in development).
 - A job stopped because its reel or photo was deleted writes no failure record: it is not a failure.
 - A crash (`crashed`) is captured to PostHog only; it has no log record, and in development it shows
   only in the worker's console.
@@ -167,7 +177,10 @@ Every row also carries `app`. A `reportFailure` row without a provider error sti
   production, so its previews send nothing.
 - The worker reads `POSTHOG_PROJECT_TOKEN` and `POSTHOG_HOST` from `apps/worker/.env.production`,
   the same variables as its events. The same two also turn on the worker's AI generation events
-  (`app_docs/measurement.md`, "AI generations"), so filling the token in development turns on both.
+  (`app_docs/measurement.md`, "AI generations"), which keep working in development: filling the
+  token in `.env.development` turns on prompts and AI traces, never exception capture.
+- The studio reads `NEXT_PUBLIC_VERCEL_ENV`, which Vercel sets itself ("production", "preview" or
+  "development"; absent locally). It is already covered by turbo's `NEXT_PUBLIC_*` build env.
 - `apps/studio/test-support/worker.ts` blanks `POSTHOG_PROJECT_TOKEN` for every spawned `once`, so a
   filled env file can never make a spec send an exception.
 - The comments in `apps/studio/.env.example`, `apps/web/.env.example` and `apps/worker/.env.example`
@@ -181,8 +194,9 @@ Every row also carries `app`. A `reportFailure` row without a provider error sti
   failure captured through `Deps.errors`), `apps/studio/src/lib/server-failures.test.ts` (no
   `console.error(` left under `src/app/` and `src/lib/`), `apps/studio/src/lib/track.test.ts`
   (`captureException` and its test hook), `apps/studio/src/lib/upload-answers.test.ts`,
+  `apps/studio/src/lib/analytics.test.ts` (`capture_exceptions`, `isProductionBuild`),
   `apps/web/src/lib/error-tracking.test.ts`, `apps/worker/src/error-tracking.test.ts` (including the
-  closed gate), the failure log record and INFO stderr in `apps/worker/src/telemetry.test.ts`, and
+  closed gate and every non-production `WORKER_ENV`), the failure log record and INFO stderr in `apps/worker/src/telemetry.test.ts`, and
   the capture test in `apps/worker/src/step-runner.test.ts`.
 - E2E: the "Create fails" test in `apps/studio/e2e/multipart-upload.spec.ts` sees exactly one
   `$exception` with `status: 500` and `error_code: "failed"` through the test hook.
@@ -193,8 +207,11 @@ Every row also carries `app`. A `reportFailure` row without a provider error sti
 - Never send a secret, a signed URL, an email address, a file name, file contents or a change
   request's text.
 - Never pass the provider's error as `cause`: send its code and its scrubbed message as properties.
-- Never build a client at module load, or without both variables (and, for the landing page,
-  production).
+- Never build a client at module load, or without both variables and production (the studio server,
+  the landing page and the worker alike). Never capture an exception outside production: not in
+  development, a preview, CI or E2E, even when the PostHog variables are set.
+- Never gate prompts, AI traces, feature flags, analytics events or the failure log records on
+  production: they work in development.
 - Tests never call PostHog: fake clients only.
 - Never capture to PostHog under `navigator.webdriver`: the test hook records instead.
 - Never use the email as the distinct id: the Supabase user id only.
@@ -213,8 +230,9 @@ Every row also carries `app`. A `reportFailure` row without a provider error sti
 - The Uppy workaround: `@uppy/aws-s3` 6.3.0's Companion client throws only
   `Companion request failed: <statusText>` (empty over HTTP/2), losing the status and the JSON
   `error` code, so the uploader observes its own answers. Re-check it on an Uppy upgrade.
-- Studio previews built with the token also send server exceptions (the studio's gate has no
-  production check).
+- Studio previews send no exception: `NEXT_PUBLIC_VERCEL_ENV` is "preview" there.
+- When production goes live, error tracking is meant to feed PostHog Inbox; the production gate
+  above stays intact for that.
 - The E2E server has no token, so the server capture of a real R2 refusal is proven by the unit test,
   not by a spec.
 - `digest` ties a PostHog issue to the Vercel log line of the same request.

@@ -1,5 +1,5 @@
 import posthog from "posthog-js";
-import { STUDIO_SUPER_PROPERTIES } from "./analytics";
+import { STUDIO_SUPER_PROPERTIES, isProductionBuild } from "./analytics";
 import type { StudioEvent } from "./studio-events";
 
 // The event names live in ./studio-events (dependency-free); never renamed.
@@ -63,14 +63,16 @@ export function captureException(
   properties: Record<string, string | number | boolean | null>,
 ): void {
   recordForTests("$exception", { $exception_message: message, ...properties });
-  if (!posthog.__loaded) return;
+  // Production only: development and previews load PostHog for events and
+  // flags, never for exceptions.
+  if (!posthog.__loaded || !isProductionBuild()) return;
   posthog.captureException(new Error(message), properties);
 }
 
 /**
  * A studio browser failure the owner cannot see (a dropped Realtime channel):
  * an exception in production, where PostHog is loaded, and a console warning
- * otherwise (development never sends it; console.error stays reserved for
+ * otherwise (development and previews never send it; console.error stays reserved for
  * server failures through reportFailure, server-failures.test.ts). Under automation the test hook
  * records it, as for captureException.
  */
@@ -78,7 +80,7 @@ export function reportBrowserFailure(
   message: string,
   properties: Record<string, string | number | boolean | null>,
 ): void {
-  if (posthog.__loaded) {
+  if (posthog.__loaded && isProductionBuild()) {
     captureException(message, properties);
     return;
   }

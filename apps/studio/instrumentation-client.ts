@@ -1,5 +1,5 @@
 import posthog from "posthog-js";
-import { startStudioAnalytics, studioPosthogOptions } from "@/lib/analytics";
+import { isProductionBuild, startStudioAnalytics, studioPosthogOptions } from "@/lib/analytics";
 
 // The studio's PostHog start-up: same project as the landing page, every event
 // tagged `app: "studio"`, the signed-in user identified by their Supabase id
@@ -19,7 +19,10 @@ startStudioAnalytics(
   browser,
   {
     init: (token, host) => {
-      posthog.init(token, studioPosthogOptions(host, process.env.NODE_ENV === "development"));
+      posthog.init(
+        token,
+        studioPosthogOptions(host, process.env.NODE_ENV === "development", isProductionBuild()),
+      );
     },
     register: (properties) => {
       posthog.register(properties);

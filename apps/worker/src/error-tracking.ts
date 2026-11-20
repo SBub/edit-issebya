@@ -7,8 +7,8 @@ import { scrub } from "./scrub.ts";
 // step row and every uncaught error of the process go to PostHog error
 // tracking. Built per process in main.ts and once.ts and passed down like
 // telemetry, never at module load, never global. Without both
-// POSTHOG_PROJECT_TOKEN and POSTHOG_HOST no client is built at all and nothing
-// is captured. Failures are logged to the OpenTelemetry logger either way
+// POSTHOG_PROJECT_TOKEN and POSTHOG_HOST, or outside WORKER_ENV=production, no
+// client is built at all and nothing is captured. Failures are logged to the OpenTelemetry logger either way
 // (telemetry.ts emitFailureLog), so Grafana shows them in every mode.
 //
 // Checked against posthog-node 5.61.1 (dist/client.d.ts):
@@ -113,7 +113,10 @@ export function createErrorTracker(
 ): ErrorTracker {
   const projectToken = env.POSTHOG_PROJECT_TOKEN?.trim();
   const host = env.POSTHOG_HOST?.trim();
-  if (!projectToken || !host) return DISABLED_TRACKER;
+  // Production only: WORKER_ENV is "production" in `worker:prod` and
+  // compose.prod.yaml. The PostHog variables stay set in development for
+  // prompts and AI traces; they never turn exception capture on.
+  if (env.WORKER_ENV?.trim() !== "production" || !projectToken || !host) return DISABLED_TRACKER;
   const client = makeClient(projectToken, host);
   const workerId = env.WORKER_ID?.trim();
 
