@@ -229,7 +229,7 @@ describe("build with behind items", () => {
     );
     // The card shows its stand-in picture, at the picture's aspect.
     expect(html).toContain(
-      `<div id="visual-1" class="clip visual-picture" data-start="5.206" data-duration="2.000" data-track-index="30" style="left: 75px; top: 1047px; width: 300px; height: 383px">\n  <img src="assets/visuals/visual-1.jpg" alt="">\n</div>`,
+      `<div id="visual-1" class="clip visual-picture" data-start="5.206" data-duration="2.000" data-track-index="30" style="left: 110px; top: 1047px; width: 300px; height: 383px">\n  <img src="assets/visuals/visual-1.jpg" alt="">\n</div>`,
     );
     expect(html).not.toContain("photo");
     expect(assets.filter((asset) => !["font", "sound"].includes(asset.role))).toEqual([

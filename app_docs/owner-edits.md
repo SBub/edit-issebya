@@ -22,7 +22,8 @@
 - Owner rule, 2026-11-17: a VISUAL card may go beyond the safe zone, over the platform buttons'
   notch and even past the frame's edge, but at least 20% of the upright rectangle around it stays
   inside the frame, so it is never lost off screen. Text stays bound to the safe zone exactly as
-  before. The engine's own placement of cards is unchanged.
+  before. The engine's own placement of cards keeps them inside the safe zone (2026-11-19: now x 70 to
+  1010, from y 270, off the rail's notch).
 - Owner decisions, 2026-11-17 (visuals step 3, pictures from the photo library): in the same editor,
   behind the same flag, a selected VISUAL's `Change picture` and, with nothing selected, `Add
 picture here` open one picker of all the owner's ready library photos, newest first (matching a

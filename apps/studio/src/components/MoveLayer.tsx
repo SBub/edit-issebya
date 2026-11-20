@@ -363,7 +363,7 @@ export function MoveLayer({
         if (!saving) onSelect(null);
       }}
     >
-      {/* The bar: as tall as the frame's top margin (220 of 1920), which holds no text. */}
+      {/* The bar: as tall as the frame's top margin (220 of 1920, under the 270 of the safe zone's top), which holds no text. */}
       <div
         data-testid="move-bar"
         onPointerDown={(event) => event.stopPropagation()}

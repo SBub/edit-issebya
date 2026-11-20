@@ -9,18 +9,18 @@ describe("platformZones", () => {
   it("shades the margins at the guard's edges", () => {
     expect(zones.map((zone) => zone.id)).toEqual(["top", "bottom", "left", "right", "buttons"]);
     expect(byId.top).toMatchObject({ left: 0, top: 0, width: 100 });
-    expect(byId.top!.height).toBeCloseTo((220 / 1920) * 100);
+    expect(byId.top!.height).toBeCloseTo((270 / 1920) * 100);
     expect(byId.bottom!.top).toBeCloseTo((1470 / 1920) * 100);
     expect(byId.bottom!.top + byId.bottom!.height).toBeCloseTo(100);
-    expect(byId.left!.width).toBeCloseTo((35 / 1080) * 100);
-    expect(byId.right!.left).toBeCloseTo((1045 / 1080) * 100);
+    expect(byId.left!.width).toBeCloseTo((70 / 1080) * 100);
+    expect(byId.right!.left).toBeCloseTo((1010 / 1080) * 100);
     expect(byId.right!.left + byId.right!.width).toBeCloseTo(100);
   });
 
-  it("shades the button column's notch from y 1164 down, left of the right strip", () => {
-    expect(byId.buttons!.left).toBeCloseTo((945 / 1080) * 100);
+  it("shades the button column's notch from y 833 down, left of the right strip", () => {
+    expect(byId.buttons!.left).toBeCloseTo((880 / 1080) * 100);
     expect(byId.buttons!.left + byId.buttons!.width).toBeCloseTo(byId.right!.left);
-    expect(byId.buttons!.top).toBeCloseTo((1164 / 1920) * 100);
+    expect(byId.buttons!.top).toBeCloseTo((833 / 1920) * 100);
     expect(byId.buttons!.top + byId.buttons!.height).toBeCloseTo(byId.bottom!.top);
   });
 

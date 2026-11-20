@@ -7,6 +7,7 @@ import {
   intersectBox,
 } from "./preset.ts";
 import { SAFE_ZONE, zonesAt } from "./engine-zones.ts";
+import type { Box } from "./head-track.ts";
 import { STYLES, VARIANTS, timingOf } from "./variants.ts";
 
 const safe = SAFE_ZONE.box;
@@ -23,12 +24,12 @@ describe("intersectBox", () => {
 });
 
 describe("the platform guard", () => {
-  it("is the TikTok and Instagram box at 1080x1920", () => {
-    expect(PLATFORM_SAFE).toEqual({ left: 35, right: 1045, top: 220, bottom: 1470 });
+  it("is the TikTok full screen player's box at 1080x1920", () => {
+    expect(PLATFORM_SAFE).toEqual({ left: 70, right: 1010, top: 270, bottom: 1470 });
   });
 
   it("cuts the button column out of the box's lower-right corner", () => {
-    expect(PLATFORM_BUTTONS).toEqual({ left: 945, right: 1045, top: 1164, bottom: 1470 });
+    expect(PLATFORM_BUTTONS).toEqual({ left: 880, right: 1010, top: 833, bottom: 1470 });
     expect(intersectBox(PLATFORM_BUTTONS, PLATFORM_SAFE)).toEqual(PLATFORM_BUTTONS);
   });
 
@@ -43,6 +44,39 @@ describe("the platform guard", () => {
     const noHeadLine = zonesAt("above-head", SAFE_ZONE, null)[0]!.want.y;
     expect(noHeadLine).toBeGreaterThanOrEqual(safe.top);
     expect(noHeadLine + STYLES.accent.base).toBeLessThanOrEqual(safe.bottom);
+  });
+});
+
+// What TikTok's full screen player draws over the video on an iPhone (owner's
+// screenshots, 2026-11-19), in video pixels: the player scales the 1080x1920
+// video by 0.941 (its height fills the area above the black bottom panel) and
+// crops the sides, so x 50 to 1030 shows. Measured, rounded outwards.
+const PLAYER_UI: Record<string, Box> = {
+  "side crop, left": { left: 0, right: 50, top: 0, bottom: 1920 },
+  "side crop, right": { left: 1030, right: 1080, top: 0, bottom: 1920 },
+  "status bar, back arrow and search box": { left: 0, right: 1080, top: 0, bottom: 247 },
+  "right rail (avatar to music disc)": { left: 900, right: 1011, top: 853, bottom: 1748 },
+  "username and caption": { left: 79, right: 400, top: 1645, bottom: 1758 },
+  "promo bar, progress bar and bottom panel": { left: 0, right: 1080, top: 1785, bottom: 1920 },
+};
+
+describe("the safe zone against the full screen player", () => {
+  const usable = zonesAt("anywhere-in-safe-zone", SAFE_ZONE, null).flatMap((part) => part.area);
+  it("has usable area", () => {
+    expect(usable.length).toBeGreaterThan(0);
+  });
+  it.each(Object.entries(PLAYER_UI))("excludes the %s", (_name, ui) => {
+    for (const area of usable) {
+      const overlap = intersectBox(area, ui);
+      expect(overlap.right <= overlap.left || overlap.bottom <= overlap.top).toBe(true);
+    }
+  });
+  it("keeps about 20 px from the rail, the top bar and the crop", () => {
+    expect(safe.left - 50).toBeGreaterThanOrEqual(20);
+    expect(1030 - safe.right).toBeGreaterThanOrEqual(20);
+    expect(safe.top - 247).toBeGreaterThanOrEqual(20);
+    expect(900 - SAFE_ZONE.notch.left).toBeGreaterThanOrEqual(20);
+    expect(853 - SAFE_ZONE.notch.top).toBeGreaterThanOrEqual(20);
   });
 });
 

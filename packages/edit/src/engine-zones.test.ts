@@ -7,13 +7,13 @@ import { PLATFORM_BUTTONS, PLATFORM_SAFE } from "./preset.ts";
 // zones take the face as given).
 const FACE: Box = { left: 300, right: 700, top: 500, bottom: 1000 };
 
-// The safe zone's centre x: (35 + 1045) / 2.
+// The safe zone's centre x: (70 + 1010) / 2.
 const CX = 540;
-// PLATFORM_SAFE minus the notch (945 to 1045 by 1164 to 1470), in the order
+// PLATFORM_SAFE minus the notch (880 to 1010 by 833 to 1470), in the order
 // `minus` cuts it: the part above the notch, then the part left of it.
 const S_MINUS_NOTCH: Box[] = [
-  { left: 35, right: 1045, top: 220, bottom: 1164 },
-  { left: 35, right: 945, top: 1164, bottom: 1470 },
+  { left: 70, right: 1010, top: 270, bottom: 833 },
+  { left: 70, right: 880, top: 833, bottom: 1470 },
 ];
 
 const ZONES: ZoneName[] = [
@@ -37,7 +37,7 @@ describe("zonesAt, with a head", () => {
   it("above-head: S above the face less the gap, wanted 190 px above the face's top", () => {
     expect(zonesAt("above-head", SAFE_ZONE, FACE)).toEqual([
       {
-        area: [{ left: 35, right: 1045, top: 220, bottom: 488 }],
+        area: [{ left: 70, right: 1010, top: 270, bottom: 488 }],
         want: { x: CX, y: 310 },
       },
     ]);
@@ -51,22 +51,26 @@ describe("zonesAt, with a head", () => {
   it("upper-third: the top third of S, wanted at its top centre, whatever the face", () => {
     const [part] = zonesAt("upper-third", SAFE_ZONE, FACE);
     expect(part!.area).toHaveLength(1);
-    expect(part!.area[0]!.left).toBe(35);
-    expect(part!.area[0]!.right).toBe(1045);
-    expect(part!.area[0]!.top).toBe(220);
-    expect(part!.area[0]!.bottom).toBeCloseTo(220 + 1250 / 3, 6);
-    expect(part!.want).toEqual({ x: CX, y: 220 });
+    expect(part!.area[0]!.left).toBe(70);
+    expect(part!.area[0]!.right).toBe(1010);
+    expect(part!.area[0]!.top).toBe(270);
+    expect(part!.area[0]!.bottom).toBeCloseTo(270 + 1200 / 3, 6);
+    expect(part!.want).toEqual({ x: CX, y: 270 });
   });
 
   it("beside-face: the strips left and right of the face, the wider one first", () => {
-    // Left strip 35 to 300 (265 wide), right strip 700 to 1045 (345 wide).
+    // Left strip 70 to 300 (230 wide), right strip 700 to 1010 (310 wide), its lower part
+    // cut by the notch.
     const [first, second] = zonesAt("beside-face", SAFE_ZONE, FACE);
     expect(first).toEqual({
-      area: [{ left: 700, right: 1045, top: 500, bottom: 1120 }],
+      area: [
+        { left: 700, right: 1010, top: 500, bottom: 833 },
+        { left: 700, right: 880, top: 833, bottom: 1120 },
+      ],
       want: { x: 700, y: 850 },
     });
     expect(second).toEqual({
-      area: [{ left: 35, right: 300, top: 500, bottom: 1120 }],
+      area: [{ left: 70, right: 300, top: 500, bottom: 1120 }],
       want: { x: 300, y: 850 },
     });
   });
@@ -81,10 +85,7 @@ describe("zonesAt, with a head", () => {
     // The part below the face runs into the notch: the notch is cut out.
     expect(zonesAt("below-face", SAFE_ZONE, FACE)).toEqual([
       {
-        area: [
-          { left: 35, right: 1045, top: 1012, bottom: 1164 },
-          { left: 35, right: 945, top: 1164, bottom: 1470 },
-        ],
+        area: [{ left: 70, right: 880, top: 1012, bottom: 1470 }],
         want: { x: 500, y: 1012 },
       },
     ]);
@@ -92,21 +93,21 @@ describe("zonesAt, with a head", () => {
 
   it("caption-line: S from y 1290 down, wanted at its top centre", () => {
     expect(zonesAt("caption-line", SAFE_ZONE, FACE)).toEqual([
-      { area: [{ left: 35, right: 945, top: 1290, bottom: 1470 }], want: { x: CX, y: 1290 } },
+      { area: [{ left: 70, right: 880, top: 1290, bottom: 1470 }], want: { x: CX, y: 1290 } },
     ]);
   });
 
   it("corner: the four corners of S inset 40 px, in order, the notch cut out", () => {
     const parts = zonesAt("corner", SAFE_ZONE, FACE);
     const inset = [
-      { left: 75, right: 1005, top: 260, bottom: 1164 },
-      { left: 75, right: 945, top: 1164, bottom: 1430 },
+      { left: 110, right: 970, top: 310, bottom: 833 },
+      { left: 110, right: 880, top: 833, bottom: 1430 },
     ];
     expect(parts.map((part) => part.want)).toEqual([
-      { x: 75, y: 260 },
-      { x: 1005, y: 260 },
-      { x: 75, y: 1430 },
-      { x: 1005, y: 1430 },
+      { x: 110, y: 310 },
+      { x: 970, y: 310 },
+      { x: 110, y: 1430 },
+      { x: 970, y: 1430 },
     ]);
     for (const part of parts) expect(part.area).toEqual(inset);
   });
@@ -119,7 +120,7 @@ describe("zonesAt, with a head", () => {
 
   it("anywhere-in-safe-zone: all of S, wanted at its centre", () => {
     expect(zonesAt("anywhere-in-safe-zone", SAFE_ZONE, FACE)).toEqual([
-      { area: S_MINUS_NOTCH, want: { x: CX, y: 845 } },
+      { area: S_MINUS_NOTCH, want: { x: CX, y: 870 } },
     ]);
   });
 });

@@ -253,13 +253,14 @@ describe("the face", () => {
     expect(zone).toBe("head-top");
     // Its style has no base: anchored at the head top (its centre wanted 60 px
     // below the face's top), it moves up until the face hides 30% of it, and
-    // grows until its top meets S's top: 0.7 * size = FACE.top - S.top, 400 px,
+    // grows until its top meets S's top: 0.7 * size = FACE.top - S.top, 328 px,
     // far over the accent's 110. It never wanders to the roomier strip below
     // the face (decision 18).
-    expect(size).toBe(400);
+    expect(size).toBe(328);
     expect(size).toBeGreaterThan(BASE);
     expect(box.top).toBe(S.top);
-    expect(box.bottom - FACE.top).toBeCloseTo(0.3 * size, 6);
+    // The box's height is a whole pixel count (98 for 98.4).
+    expect(Math.abs(box.bottom - FACE.top - 0.3 * size)).toBeLessThan(1);
     expect(Math.abs((box.left + box.right) / 2 - (S.left + S.right) / 2)).toBeLessThanOrEqual(1);
     expect(coversFace).toBe(false);
     expect(cost).toBe(0);
@@ -269,12 +270,12 @@ describe("the face", () => {
   });
 
   it("the 30% rule is a hard filter: a face near the top of S bounds the big word's size, it never leaves the head top for a roomier spot", () => {
-    // A tall face from y 300 through most of S: at the head top only 80 px lie
+    // A tall face from y 350 through most of S: at the head top only 80 px lie
     // above the face, so the word is 114 px (0.7 * 114 <= 80) with its lower
     // 30% behind the head, still over the accent's base, and nothing is given
     // up (the full size is what the head leaves at the anchor, no text took
     // room). The strip beside the face, or below it, is never taken.
-    const tall: Box = { left: 300, right: 700, top: 300, bottom: 1300 };
+    const tall: Box = { left: 300, right: 700, top: 350, bottom: 1300 };
     const result = placeElement(bigWord("AI"), scene([tall]), measurer);
     const { box, size, cost } = result.placed!;
     expect(size).toBe(114);
@@ -289,7 +290,7 @@ describe("the face", () => {
   });
 
   it("a text at the head top shrinks the big word in place: it stays centred on its anchor, the text as its blocker", () => {
-    // An accent across the top of S, down to y 320: at 400 px the word would
+    // An accent across the top of S, down to y 320: at 328 px the word would
     // run into it (its top at S's top), so it shrinks until it sits between the
     // accent (plus the gap) and the face's 30% line.
     const accentBox: Box = { left: 200, right: 880, top: S.top, bottom: 320 };
@@ -299,7 +300,7 @@ describe("the face", () => {
       measurer,
     );
     const { box, size, cost } = result.placed!;
-    expect(size).toBeLessThan(400);
+    expect(size).toBeLessThan(328);
     expect(size).toBeGreaterThan(BASE);
     expect(box.top).toBeGreaterThanOrEqual(accentBox.bottom + 12);
     expect(bigWordCoveredShare(box, [FACE])).toBeLessThanOrEqual(0.3);
@@ -309,7 +310,7 @@ describe("the face", () => {
     expect(result.notes[0]!.blockers).toEqual(
       expect.arrayContaining([{ kind: "item", id: "accent-1" }]),
     );
-    expect(result.notes[0]!.reason).toContain("from 400 px");
+    expect(result.notes[0]!.reason).toContain("from 328 px");
   });
 
   it("with no head the big word is centred at y 700 at the largest size S's width holds", () => {
@@ -512,14 +513,14 @@ describe("text and boxes", () => {
   it("a card sees no text: it takes the top-left corner over a text there, full size", () => {
     const result = placeElement(
       card,
-      scene([], [textAt("hook", { left: 75, right: 600, top: 260, bottom: 500 })]),
+      scene([], [textAt("hook", { left: 110, right: 600, top: 310, bottom: 550 })]),
       measurer,
     );
     const { box, size, zone, cost, lines, breaks } = result.placed!;
     expect(zone).toBe("corner");
     expect(cost).toBe(0);
     expect(size).toBe(360);
-    expect(box).toEqual({ left: 75, top: 260, right: 435, bottom: 710 });
+    expect(box).toEqual({ left: 110, top: 310, right: 470, bottom: 760 });
     expect(lines).toEqual([]);
     expect(breaks).toEqual([]);
   });
@@ -529,10 +530,14 @@ describe("text and boxes", () => {
     const wide: Box = { left: 200, right: 800, top: 230, bottom: 1300 };
     const result = placeElement(card, scene([wide]), measurer);
     expect(result.placed).not.toBeNull();
-    const { size, cost, coversFace } = result.placed!;
+    const { size, cost, coversFace, zone } = result.placed!;
     expect(coversFace).toBe(false);
     expect(size).toBeLessThan(360);
-    expect(cost).toBe(PLACE_COSTS.shrinkStep * Math.ceil((360 - size) / 36 - 1e-9));
+    // The corners' strips are too narrow beside this face: the second zone, beside it.
+    expect(zone).toBe("beside-face");
+    expect(cost).toBe(
+      PLACE_COSTS.zoneStep + PLACE_COSTS.shrinkStep * Math.ceil((360 - size) / 36 - 1e-9),
+    );
     expect(outcomes(result)).toContain("shrunk");
   });
 });

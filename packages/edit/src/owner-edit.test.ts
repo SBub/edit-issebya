@@ -56,16 +56,16 @@ describe("the components of a built page", () => {
       component: "HOOK",
       text: "Gen Z won't work like you did",
       size: 110,
-      x: 135,
-      y: 220,
+      x: 70,
+      y: 1057,
     });
     expect(byId(components, "accent-1")).toMatchObject({ component: "ACCENT", size: 110 });
     expect(byId(components, "big-word-1")).toMatchObject({
       component: "BIGWORD",
-      x: 36,
-      y: 389,
-      size: 198,
-      height: 198,
+      x: 72,
+      y: 399,
+      size: 184,
+      height: 184,
     });
     expect(byId(components, "visual-1")).toMatchObject({ component: "VISUAL", size: null });
     // Each shown caption once (a caption block, the editor's box for a sentence,
@@ -308,7 +308,7 @@ describe("applying the owner's moves", () => {
         hook.edit,
         [
           { id: "big-word-1", x: 36, y: 390, size: 197, width: 400 },
-          { id: "hook", x: 135, y: 220, size: 110, width: 0 },
+          { id: "hook", x: 70, y: 1057, size: 110, width: 0 },
         ],
         context,
       ),
@@ -324,7 +324,7 @@ describe("applying the owner's moves", () => {
   it("offers the wrap widths of a text, widest first, each with its box", async () => {
     const context = await contextOf(hook);
     const before = byId(await componentsOf(hook), "hook");
-    const options = ownerWrapOptions(hook.edit, "hook", { x: 135, y: 220, size: 110 }, context)!;
+    const options = ownerWrapOptions(hook.edit, "hook", { x: 70, y: 1057, size: 110 }, context)!;
     const words = before.text.split(" ").length;
     expect(options.length).toBeGreaterThan(1);
     expect(options.length).toBeLessThanOrEqual(words);
@@ -388,19 +388,19 @@ describe("applying the owner's moves", () => {
     expect(visual(moved.edit)).toMatchObject({ box: { x: 600, y: 700, width: 300, height: 383 } });
     const scaled = applyOwnerMoves(
       hook.edit,
-      [{ id: "visual-1", kind: "box", x: 75, y: 1047, width: 150 }],
+      [{ id: "visual-1", kind: "box", x: 110, y: 1047, width: 150 }],
       context,
     );
     if (!scaled.ok) throw new Error(scaled.reasons.join("; "));
     expect(visual(scaled.edit)).toMatchObject({
-      box: { x: 75, y: 1047, width: 150, height: Math.round((150 * 1494) / 1170) },
+      box: { x: 110, y: 1047, width: 150, height: Math.round((150 * 1494) / 1170) },
     });
     // Nothing else changed: the picture, the time, the other items.
     expect({ ...visual(scaled.edit), box: null }).toEqual({ ...visual(hook.edit), box: null });
     expect(scaled.edit.tracks.overlays).toEqual(hook.edit.tracks.overlays);
     // The builder draws it there.
     expect(byId(await componentsOf(hook, scaled.edit), "visual-1")).toMatchObject({
-      x: 75,
+      x: 110,
       y: 1047,
       width: 150,
       height: 192,
@@ -451,9 +451,10 @@ describe("the safe zone, the owner's one hard rule", () => {
       x: safe.left,
       y: safe.top,
     });
-    expect(fitInSafeZone({ x: 900, y: 1000, width: 300, height: 110 })).toEqual({
+    // Above the notch's top, so the right edge is the only edge in the way.
+    expect(fitInSafeZone({ x: 900, y: 500, width: 300, height: 110 })).toEqual({
       x: safe.right - 300,
-      y: 1000,
+      y: 500,
     });
     expect(fitInSafeZone({ x: 100, y: 1900, width: 300, height: 110 })).toEqual({
       x: 100,
@@ -543,7 +544,7 @@ describe("the safe zone, the owner's one hard rule", () => {
     const context = await contextOf(hook);
     const settled = settleOwnerMove(
       hook.edit,
-      { id: "hook", x: 135, y: 220, size: 110, width: 4000 },
+      { id: "hook", x: 70, y: 1057, size: 110, width: 4000 },
       context,
     );
     if (!settled.ok) throw new Error(settled.reasons.join("; "));
@@ -680,7 +681,7 @@ describe("the moves of one save", () => {
 
   it("leaves out a VISUAL's move that changes nothing", async () => {
     const components = await componentsOf(hook);
-    const still = { id: "visual-1", kind: "box" as const, x: 75, y: 1047, width: 300 };
+    const still = { id: "visual-1", kind: "box" as const, x: 110, y: 1047, width: 300 };
     const moved = { ...still, x: 90 };
     const scaled = { ...still, width: 200 };
     expect(effectiveMoves([still, moved], components)).toEqual([moved]);
@@ -740,7 +741,7 @@ describe("the learning records of a save", () => {
       hook.edit,
       [
         { id: "accent-1", x: 120, y: 900, size: 110 },
-        { id: "hook", x: 135, y: 220, size: 80 },
+        { id: "hook", x: 70, y: 1057, size: 80 },
       ],
       context,
     );
@@ -845,7 +846,7 @@ describe("the learning records of a save", () => {
     expect(record).toMatchObject({
       item: "visual-1",
       component: "VISUAL",
-      engine: { x: 75, y: 1047, width: 300, height: 383, size: null },
+      engine: { x: 110, y: 1047, width: 300, height: 383, size: null },
       owner: { x: 600, y: 700, width: 200, height: 255, size: null },
       moved: true,
       resized: true,
@@ -1026,7 +1027,7 @@ describe("a VISUAL turned by the owner", () => {
   it("counts a turn alone as a change, and leaves out a turn back to the card's own", async () => {
     const context = await contextOf(hook);
     const components = await componentsOf(hook);
-    const still = { id: "visual-1", kind: "box" as const, x: 75, y: 1047, width: 300 };
+    const still = { id: "visual-1", kind: "box" as const, x: 110, y: 1047, width: 300 };
     const turned = { ...still, rotation: 15 };
     expect(effectiveMoves([turned], components)).toEqual([turned]);
     expect(effectiveMoves([{ ...still, rotation: 360 }], components)).toEqual([]);
@@ -1041,7 +1042,7 @@ describe("a VISUAL turned by the owner", () => {
     const context = await contextOf(hook);
     const engine = await componentsOf(hook);
     const moves = [
-      { id: "visual-1", kind: "box" as const, x: 75, y: 1047, width: 300, rotation: -20 },
+      { id: "visual-1", kind: "box" as const, x: 110, y: 1047, width: 300, rotation: -20 },
     ];
     const applied = applyOwnerMoves(hook.edit, moves, context);
     if (!applied.ok) throw new Error(applied.reasons.join("; "));
@@ -1057,8 +1058,8 @@ describe("a VISUAL turned by the owner", () => {
     expect(record).toMatchObject({
       item: "visual-1",
       component: "VISUAL",
-      engine: { x: 75, y: 1047, width: 300, height: 383, size: null },
-      owner: { x: 75, y: 1047, width: 300, height: 383, size: null },
+      engine: { x: 110, y: 1047, width: 300, height: 383, size: null },
+      owner: { x: 110, y: 1047, width: 300, height: 383, size: null },
       moved: false,
       resized: false,
       rotated: true,
@@ -1253,7 +1254,7 @@ describe("a VISUAL's picture swapped for a library photo", () => {
   const swap = {
     id: "visual-1",
     kind: "box" as const,
-    x: 75,
+    x: 110,
     y: 1047,
     width: 300,
     photo_id: PHOTO.id,
@@ -1273,7 +1274,7 @@ describe("a VISUAL's picture swapped for a library photo", () => {
     expect(card).toMatchObject({
       kind: "visual",
       photo: { id: PHOTO.id, width: 1600, height: 900 },
-      box: { x: 75, y: 1047, width: 300, height: 169 },
+      box: { x: 110, y: 1047, width: 300, height: 169 },
     });
     expect(card && "image" in card).toBe(false);
     expect(applied.edit.inputs.photos).toEqual([PHOTO.id]);
