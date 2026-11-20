@@ -18,6 +18,8 @@ type FailedJob = Pick<
 > & {
   // An owner_edit job's payload (its version and moves); null for other kinds.
   owner_edit: unknown;
+  // A relayout job's target font pair (the table's check needs it for that kind); null for others.
+  font_pair: string | null;
 };
 
 // Queues a new job of the failed job's kind and parameters naming it in
@@ -47,7 +49,9 @@ export async function requestRetry(input: {
       .maybeSingle<Pick<ReelDetail, "id" | "status">>(),
     supabase
       .from("jobs")
-      .select("id, reel_id, kind, status, request, restore_version_id, version_id, owner_edit")
+      .select(
+        "id, reel_id, kind, status, request, restore_version_id, version_id, owner_edit, font_pair",
+      )
       .eq("id", input.jobId)
       .maybeSingle<FailedJob>(),
   ]);
@@ -81,6 +85,10 @@ export async function requestRetry(input: {
   // An owner edit is retried with the same version and moves.
   if (failed.owner_edit !== null && failed.owner_edit !== undefined) {
     row.owner_edit = failed.owner_edit;
+  }
+  // A relayout job is retried with the same font pair.
+  if (failed.font_pair !== null && failed.font_pair !== undefined) {
+    row.font_pair = failed.font_pair;
   }
 
   const { data, error } = await supabase

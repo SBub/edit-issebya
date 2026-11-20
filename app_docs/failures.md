@@ -134,8 +134,8 @@ stored.
   (`apps/studio/src/app/retry-actions.ts`). It reads the reel and the job under RLS as the owner,
   answers `blocked` for a refused reel (`This clip was refused; upload another clip`) or a job that
   is not `failed` (`Only a failed job can be retried`), then inserts a new job of the same reel,
-  kind and parameters (`request`, `restore_version_id`, `version_id`, and an `owner_edit` job's
-  `owner_edit` payload, `app_docs/owner-edits.md`) with `retry_of_job_id` set to
+  kind and parameters (`request`, `restore_version_id`, `version_id`, a relayout job's `font_pair`, and an
+  `owner_edit` job's `owner_edit` payload, `app_docs/owner-edits.md`) with `retry_of_job_id` set to
   the failed job. A unique-violation (`23505`) answers `already`, shown as
   `This job is already being retried`. Every step before the one that failed is a fingerprint hit,
   so the new job resumes there.
