@@ -223,7 +223,6 @@ describe("an item with no snapshot", () => {
         {
           posthog: noWrite(),
           curatorPrompts: fakePromptSource(),
-          judgePrompts: fakePromptSource(),
           ai,
           telemetry: createTelemetry({}),
           measurerOf: async () => ({}) as never,

@@ -1,5 +1,5 @@
 import type { Label, Source, Why } from "./label.ts";
-import { COMPONENTS, type Component } from "./owner-marks.ts";
+import { JUDGED_COMPONENTS, type Component } from "./owner-marks.ts";
 
 // THE SCORE: how often the judge's verdict says what the code label says. A
 // good pick should be approved, a bad one rejected.
@@ -74,7 +74,7 @@ export function score(picks: readonly JudgedPick[]): Score {
       owner: tally(picks.filter((pick) => pick.source === "owner")),
       curator: tally(picks.filter((pick) => pick.source === "curator")),
     },
-    byComponent: COMPONENTS.map((component) => ({
+    byComponent: JUDGED_COMPONENTS.map((component) => ({
       component,
       tally: tally(picks.filter((pick) => pick.component === component)),
     })),

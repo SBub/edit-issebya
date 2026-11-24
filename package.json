@@ -23,7 +23,8 @@
     "knip": "knip",
     "test": "turbo run test",
     "test:db": "turbo run test:db",
-    "test:e2e": "turbo run test:e2e"
+    "test:e2e": "turbo run test:e2e",
+    "eval": "yarn workspace @edit-issebya/worker eval"
   },
   "engines": {
     "node": "24.x"

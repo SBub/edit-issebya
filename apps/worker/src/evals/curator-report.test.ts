@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { type CuratorReport, renderCuratorReport } from "./curator-report.ts";
 import { scoreRun } from "./curator-score.ts";
+import { summarizePrompt } from "./compare-table.ts";
 
 const score = scoreRun([], [{ component: "accent", span: { from: 0, to: 1 } }]);
 
@@ -9,14 +10,20 @@ describe("the curator report", () => {
     const report: CuratorReport = {
       startedAt: "2026-11-12T10:00:00.000Z",
       curator: { id: "draft:abcdef123456", label: "draft", file: "c.txt" },
-      judge: { id: "reel-components-judge@v1", label: "production" },
       decideModel: "model-a",
-      judgeModel: "model-a",
       repeats: 1,
       datasetRevision: 6,
       experimentId: "exp-1",
+      summary: summarizePrompt({ id: "draft:abcdef123456", label: "draft" }, 1, [
+        [
+          {
+            repeat: 1,
+            ok: true,
+            score,
+          },
+        ],
+      ]),
       overall: score,
-      approval: { judged: 2, approved: 1 },
       cases: [
         {
           reel: "aaaaaaaa",
@@ -34,15 +41,12 @@ describe("the curator report", () => {
                   words: "<i>live</i>",
                   label: "bad",
                   why: "extra",
-                  verdict: "reject",
                 },
               ],
               score,
-              judge: { judged: 1, approved: 0 },
             },
           ],
           score,
-          approval: { judged: 1, approved: 0 },
         },
       ],
       skipped: [{ reel: "bbbbbbbb", reason: "no version" }],
@@ -52,8 +56,10 @@ describe("the curator report", () => {
     expect(html).toContain("Curator run 1");
     expect(html).toContain("&lt;b&gt;work&lt;/b&gt;");
     expect(html).toContain("&lt;i&gt;live&lt;/i&gt;");
-    expect(html).toContain("judge reject");
+    expect(html).not.toContain("judge");
     expect(html).toContain("Skipped reels");
+    expect(html).toContain("Comparison table");
+    expect(html).toContain("draft:abcdef123456 (draft)");
     expect(html).not.toContain("<script");
   });
 });

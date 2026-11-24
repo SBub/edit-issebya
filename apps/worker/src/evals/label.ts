@@ -1,4 +1,10 @@
-import type { ComponentPick, EvalWord, OwnerMark, Span } from "./owner-marks.ts";
+import {
+  type ComponentPick,
+  type EvalWord,
+  type OwnerMark,
+  type Span,
+  isJudged,
+} from "./owner-marks.ts";
 
 // THE CODE LABEL: every curator pick called good or bad against the owner's
 // marks, by the words it covers (app_docs/evals.md, "Labels"). The judge is
@@ -45,8 +51,10 @@ function partsOf(mark: ComponentPick): Span[] {
 // The words of a mark another component's pick can collide with: a list's
 // items (never the gaps between them), any other mark's span. A `sections`
 // list holds whole passages of the reel with other components inside them, so
-// it collides with nothing.
+// it collides with nothing. A visual sits over words that carry other
+// components, so it collides with nothing either.
 function collisionSpans(mark: OwnerMark): Span[] {
+  if (mark.component === "visual") return [];
   return mark.component === "list" && mark.level === "sections" ? [] : partsOf(mark);
 }
 
@@ -143,7 +151,7 @@ export function judgePicks(
   seed: string,
 ): JudgePick[] {
   const merged = new Map<string, Omit<JudgePick, "id">>();
-  for (const pick of picks) {
+  for (const pick of picks.filter(isJudged)) {
     const key = keyOf(pick);
     if (merged.has(key)) continue;
     merged.set(key, {

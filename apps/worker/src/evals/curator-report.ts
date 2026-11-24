@@ -1,10 +1,11 @@
-import { type Component, COMPONENTS } from "./owner-marks.ts";
+import type { Component } from "./owner-marks.ts";
 import { type Label, type Why } from "./label.ts";
-import { type Approval, type Prf, type RunScore, approvalRate, prf } from "./curator-score.ts";
+import { COLUMNS, type Prf, type RunScore, prf } from "./curator-score.ts";
+import { type PromptSummary, tableCells } from "./compare-table.ts";
 import { STYLE, escapeHtml, percent } from "./report.ts";
 
 // THE CURATOR REPORT: one self-contained HTML page (no script, no outside file):
-// the tables by component, by reel and the judge's approval, the failed runs,
+// the tables by component and by reel, the failed runs,
 // and per reel the owner's marks beside each run's picks.
 
 export interface ReportPick {
@@ -12,28 +13,25 @@ export interface ReportPick {
   words: string;
   label: Label;
   why: Why;
-  verdict: "approve" | "reject" | null;
 }
 
 export interface ReportRun {
   repeat: number;
   failed?: string[];
   picks: ReportPick[];
-  score?: RunScore;
-  judge?: { judged: number; approved: number } | { failed: string[] } | null;
+  score: RunScore;
 }
 
 export interface CuratorReport {
   startedAt: string;
   curator: { id: string; label: string; file?: string };
-  judge: { id: string; label: string; file?: string };
   decideModel: string;
-  judgeModel: string;
   repeats: number;
   datasetRevision: number;
   experimentId: string;
+  // This prompt's row of the comparison table.
+  summary: PromptSummary;
   overall: RunScore;
-  approval: Approval;
   cases: {
     reel: string;
     versionNumber: number;
@@ -43,7 +41,6 @@ export interface CuratorReport {
     marks: { component: Component; words: string }[];
     runs: ReportRun[];
     score: RunScore;
-    approval: Approval;
   }[];
   skipped: { reel: string; reason: string }[];
 }
@@ -84,7 +81,7 @@ function scoreCells(
 
 function runRange(runs: readonly ReportRun[]): string {
   const f1s = runs
-    .flatMap((run) => (run.score ? [prf(run.score.overall).f1] : []))
+    .flatMap((run) => (run.failed ? [] : [prf(run.score.overall).f1]))
     .filter((value): value is number => value !== null);
   if (f1s.length === 0) return "n/a";
   const min = Math.min(...f1s);
@@ -92,12 +89,24 @@ function runRange(runs: readonly ReportRun[]): string {
   return min === max ? min.toFixed(3) : `${min.toFixed(3)} to ${max.toFixed(3)}`;
 }
 
+// The comparison table: one row per prompt (app_docs/evals.md, "The comparison table").
+function comparisonTable(summaries: readonly PromptSummary[]): string {
+  const { head, rows } = tableCells(summaries);
+  return table(
+    head.map(escapeHtml),
+    rows.map((row) => row.map(escapeHtml)),
+  );
+}
+
+const TABLE_NOTE =
+  "F1 of each component, mean over the repeats with the lowest to highest repeat in brackets. Runs ok: curator runs with a valid answer (a failed run scores as no picks).";
+
 function pickList(picks: readonly ReportPick[]): string {
   if (picks.length === 0) return '<span class="dim">no picks</span>';
   return `<ul>${picks
     .map(
       (pick) =>
-        `<li>${pick.component}: ${escapeHtml(pick.words)} <span class="dim">(${pick.label}, ${pick.why}${pick.verdict ? `, judge ${pick.verdict}` : ""})</span></li>`,
+        `<li>${pick.component}: ${escapeHtml(pick.words)} <span class="dim">(${pick.label}, ${pick.why})</span></li>`,
     )
     .join("")}</ul>`;
 }
@@ -112,22 +121,18 @@ function marksList(marks: readonly { component: Component; words: string }[]): s
 // The page. Every text from a transcript or from a model is escaped.
 export function renderCuratorReport(report: CuratorReport): string {
   const overall = prf(report.overall.overall);
-  const approval = approvalRate(report.approval);
   const meta = [
-    `Curator ${report.curator.id} (label ${report.curator.label}${report.curator.file ? `, file ${report.curator.file}` : ""}) on ${report.decideModel}`,
-    `judge ${report.judge.id} (label ${report.judge.label}${report.judge.file ? `, file ${report.judge.file}` : ""}) on ${report.judgeModel}`,
+    `Curator ${report.curator.id} (label ${report.curator.label}) on ${report.decideModel}`,
     `${report.repeats} ${report.repeats === 1 ? "run" : "runs"} per reel`,
     `dataset revision ${report.datasetRevision}`,
     `experiment ${report.experimentId}`,
     report.startedAt,
   ];
-  const byComponent = [
-    ["Overall", report.overall.overall, overall] as const,
-    ...COMPONENTS.map((component) => {
-      const counts = report.overall.byComponent[component];
-      return [component, counts, prf(counts)] as const;
-    }),
-  ].map(([name, counts, value]) => [name, ...scoreCells(counts, value)]);
+  const byComponent = COLUMNS.map((column) => {
+    const counts = column.counts(report.overall);
+    return [column.title, ...scoreCells(counts, prf(counts))];
+  });
+  const wholeLists = report.overall.byComponent.list;
   const byReel = report.cases.map((reel) => {
     const value = prf(reel.score.overall);
     return [
@@ -135,7 +140,6 @@ export function renderCuratorReport(report: CuratorReport): string {
       num(value.f1),
       pct(value.precision),
       pct(value.recall),
-      pct(approvalRate(reel.approval)),
       runRange(reel.runs),
       `${reel.runs.filter((run) => !run.failed).length} of ${reel.runs.length}`,
     ];
@@ -147,15 +151,6 @@ export function renderCuratorReport(report: CuratorReport): string {
         (run) =>
           `<li>${escapeHtml(reel.reel)}, run ${run.repeat}: ${escapeHtml((run.failed ?? []).join("; "))}</li>`,
       ),
-  );
-  const judgeFailures = report.cases.flatMap((reel) =>
-    reel.runs.flatMap((run) =>
-      run.judge && "failed" in run.judge
-        ? [
-            `<li>${escapeHtml(reel.reel)}, run ${run.repeat}: ${escapeHtml(run.judge.failed.join("; "))}</li>`,
-          ]
-        : [],
-    ),
   );
   const side = report.cases.map((reel) => {
     const head = ["Owner marks", ...reel.runs.map((run) => `Curator run ${run.repeat}`)];
@@ -191,14 +186,15 @@ export function renderCuratorReport(report: CuratorReport): string {
     "<h1>Components curator eval</h1>",
     `<p class="meta">${meta.map(escapeHtml).join(" · ")}</p>`,
     `<p class="big">F1 ${num(overall.f1)}</p>`,
-    `<p class="meta">precision ${pct(overall.precision)}, recall ${pct(overall.recall)}; judge approval ${pct(approval)} (${report.approval.approved} of ${report.approval.judged} distinct picks)</p>`,
+    `<p class="meta">precision ${pct(overall.precision)}, recall ${pct(overall.recall)}</p>`,
+    "<h2>Comparison table</h2>",
+    `<p class="meta">${escapeHtml(TABLE_NOTE)}</p>`,
+    comparisonTable([report.summary]),
     "<h2>By component</h2>",
     table(["Component", "Precision", "Recall", "F1", "Good picks", "Matched marks"], byComponent),
+    `<p class="meta">The overall row counts a list as one pick (${wholeLists.good} of ${wholeLists.picks} lists good, ${wholeLists.matched} of ${wholeLists.marks} owner lists matched). The list row counts its items.</p>`,
     "<h2>By reel</h2>",
-    table(
-      ["Reel", "F1", "Precision", "Recall", "Judge approval", "F1 per run", "Runs answered"],
-      byReel,
-    ),
+    table(["Reel", "F1", "Precision", "Recall", "F1 per run", "Runs answered"], byReel),
     report.skipped.length === 0
       ? ""
       : `<h2>Skipped reels</h2><ul>${report.skipped
@@ -207,9 +203,6 @@ export function renderCuratorReport(report: CuratorReport): string {
     failures.length === 0
       ? ""
       : `<h2>Curator calls with no valid answer</h2><ul>${failures.join("")}</ul>`,
-    judgeFailures.length === 0
-      ? ""
-      : `<h2>Judge calls with no valid answer</h2><ul>${judgeFailures.join("")}</ul>`,
     "<h2>Owner marks and curator picks</h2>",
     side.join("\n"),
     "</main></body>",
@@ -224,3 +217,39 @@ table.sides td, table.sides th { width: 25%; }
 .side ul { list-style: none; padding-left: 0; }
 .side li { margin: 0 0 6px; }
 `;
+
+// The report of a comparison: the one table, then where each prompt's own report is.
+export function renderCompareReport(report: {
+  startedAt: string;
+  datasetRevision: number;
+  repeats: number;
+  summaries: readonly PromptSummary[];
+  reports: readonly string[];
+}): string {
+  const meta = [
+    `dataset revision ${report.datasetRevision}`,
+    `${report.repeats} ${report.repeats === 1 ? "run" : "runs"} per reel`,
+    report.startedAt,
+  ];
+  return [
+    "<!doctype html>",
+    '<html lang="en">',
+    "<head>",
+    '<meta charset="utf-8">',
+    '<meta name="viewport" content="width=device-width, initial-scale=1">',
+    '<meta name="color-scheme" content="light dark">',
+    "<title>Components curator comparison</title>",
+    `<style>${STYLE}</style>`,
+    "</head>",
+    "<body><main>",
+    "<h1>Components curator comparison</h1>",
+    `<p class="meta">${meta.map(escapeHtml).join(" · ")}</p>`,
+    `<p class="meta">${escapeHtml(TABLE_NOTE)}</p>`,
+    comparisonTable(report.summaries),
+    "<h2>One report per prompt</h2>",
+    `<ul>${report.reports.map((path) => `<li>${escapeHtml(path)}</li>`).join("")}</ul>`,
+    "</main></body>",
+    "</html>",
+    "",
+  ].join("\n");
+}

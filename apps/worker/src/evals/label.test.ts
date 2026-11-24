@@ -173,6 +173,27 @@ describe("judgePicks", () => {
   });
 });
 
+describe("visuals", () => {
+  const visual: OwnerMark = { component: "visual", span: { from: 2, to: 4 } };
+
+  it("collide with no other component's pick", () => {
+    expect(labelPick({ component: "accent", span: { from: 3, to: 3 } }, [visual], [])).toEqual({
+      label: "bad",
+      why: "extra",
+    });
+  });
+
+  it("are never sent to the judge", () => {
+    const picks = judgePicks(
+      "owner",
+      [visual, { component: "accent", span: { from: 0, to: 1 } }],
+      () => ({ label: "good", why: "owner" }),
+      "seed",
+    );
+    expect(picks.map((pick) => pick.component)).toEqual(["accent"]);
+  });
+});
+
 describe("sentPick", () => {
   const words = transcriptOf("we work to live and we live to work").words;
 

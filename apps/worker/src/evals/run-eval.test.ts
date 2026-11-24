@@ -199,6 +199,16 @@ describe("a dry run", () => {
     expect(lines.at(-1)).toBe("dry run: no judge call, no upload");
   });
 
+  it("makes no owner call for a reel whose only marks are visuals (the judge does not know them)", async () => {
+    const items = await snapshotItems([ownerItemJson(TEXT_A, {})], {
+      ...sources,
+      latestVersion: async () => null,
+    });
+    const { deps } = setup({ dataset: async () => ({ ...DATASET, items }) });
+    const summary = await runJudgeEval({ ...OPTIONS, dryRun: true }, deps);
+    expect(summary.reels[0]).toMatchObject({ ownerMarks: 0, ownerCalls: 0, curatorRuns: 2 });
+  });
+
   it("keeps to one labelled reel with a reel id, and fails on one the dataset does not have", async () => {
     const { deps } = setup();
     const one = await runJudgeEval({ ...OPTIONS, dryRun: true, reel: "bbbbbbbb-1111" }, deps);

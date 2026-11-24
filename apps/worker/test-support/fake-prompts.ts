@@ -13,14 +13,15 @@ const TEMPLATES: Record<string, { text: string }> = {
   "reel-components-judge": { text: "test prompt reel-components-judge {{script}} {{picks}}" },
 };
 
-// The fake source: the placeholder for each known name, version 1, label
-// `production`; an unknown name is unavailable, as a missing prompt is.
-export function fakePromptSource(): PromptSource {
+// The fake source: the placeholder for each known name, at a version and a
+// label (version 1, label `production` unless given); an unknown name is
+// unavailable, as a missing prompt is.
+export function fakePromptSource(label = "production", version = 1): PromptSource {
   return {
     async get(name: string): Promise<PromptText> {
       const template = TEMPLATES[name];
-      if (!template) throw new PromptUnavailable(name, "production", "no fake for this prompt");
-      return { name, version: 1, label: "production", ...template };
+      if (!template) throw new PromptUnavailable(name, label, "no fake for this prompt");
+      return { name, version, label, ...template };
     },
   };
 }

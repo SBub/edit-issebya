@@ -6,51 +6,103 @@
 
 ## For the owner
 
-**What the evals are for.** You labelled six reels by hand: which words are an accent, a big word, a list or a
-question, and which lines hold nothing. The evals measure how well the components prompt (the curator) and the
-judge that checks it agree with those labels, so a prompt change is measured before it reaches the worker.
+**What the evals are for.** You labelled nine reels by hand: which words are an accent, a big word, a list, a
+question or a visual, and which lines hold nothing. The curator eval measures how well the components prompt
+(the curator, `reel-components` in PostHog) agrees with those labels, so a prompt change is measured before it
+reaches the worker. The judge is a separate check, not part of prompt tests (see "Overview" below).
 
-**The one command.** From the repository root, on the Mac with the local stack up:
+## How to run evals yourself
 
-```
-yarn workspace @edit-issebya/worker eval judge --dry-run       # free: the inputs and the counts
-yarn workspace @edit-issebya/worker eval judge                 # the judge on the current PostHog prompt
-yarn workspace @edit-issebya/worker eval curator --repeats 3   # the curator, scored and judged (AI calls)
-yarn workspace @edit-issebya/worker eval help                  # every option
-```
+**Before the first run.** `apps/worker/.env.development` must hold your PostHog personal API key as
+`POSTHOG_PERSONAL_API_KEY` (see `apps/worker/.env.example`), with the scopes `llm_prompt:read`,
+`dataset:read`, `dataset:write`, `llm_analytics:read`, `llm_analytics:write` and
+`offline_evaluation_ingestion:write`. A missing scope stops the run with a message naming it.
 
-**What happens automatically.** Every run first refreshes the copy of the app's data the labelled reels are
-read from, for any reel whose copy is missing or out of date (a new version of the reel, a new curator run, a
-changed hook). One line is printed per refreshed reel. You never run a snapshot step yourself: `eval snapshot`
-exists only to force a refresh of every reel.
+All commands run from the repository root, on the Mac, with the local stack up. `yarn eval` is the short
+form of `yarn workspace @edit-issebya/worker eval`.
 
-**Where results appear.**
+**Try a new version of the curator prompt, step by step.**
 
-- A local report, `apps/worker/eval-output/` (gitignored, since it quotes transcripts). The run prints its path
-  as `report: <path>` at the end.
-- A PostHog experiment: `components-judge` for the judge, `components-curator` for the curator, on the dataset
-  `owner-reels`. Each reel is an item, with its agreement or its F1 and judge approval as scores.
+1. Open PostHog, then Prompts, then `reel-components`. Edit the text and save it as a new version.
+2. Put the label `draft` on that new version. (Never move `production` yet.)
+3. In the terminal, from the repository root, run the one command:
 
-**How to try a prompt draft.** Write the draft in a file outside the repository, then run the eval on it. The
-draft is judged or curated in place of the PostHog prompt, nothing is published, and the run is recorded under
-the id `draft:<hash>`:
+   ```
+   yarn eval compare --draft
+   ```
 
-```
-yarn workspace @edit-issebya/worker eval judge --prompt-file ~/judge-draft.txt
-yarn workspace @edit-issebya/worker eval curator --curator-prompt-file ~/curator-draft.txt --repeats 3
-```
+   It first prints the version numbers of both prompts, for example `prompt production: reel-components@v12`
+   and `prompt draft: reel-components@v13`. Then it runs the production prompt first and your draft second.
+   Both run on the same dataset revision with the same number of repeats (5 unless you say `--repeats n`),
+   one after the other. If no version has the label `draft`, it stops before any paid call and tells you how
+   to add the label.
 
-Edit the file and run again; compare the experiments by their ids.
+4. Read the table at the end (below). Each prompt has one row.
+5. If the draft wins, move the `production` label to that version in PostHog. If it does not win, leave
+   `production` where it is. Nothing is ever published by the eval.
 
-**The rule.** Publish a PostHog version only for a draft that wins. Then publish its text as a new version in
-PostHog, set its label, and run the eval with that label (`--label`, `--curator-label` or `--judge-label`) to
-confirm the same numbers. A draft that does not win is never published.
+Free check first: `yarn eval compare --draft --dry-run` shows the prompt versions and the inputs and makes no
+AI call. To compare production with another label, use `--label <name>` in place of `--draft`. To measure
+one label alone, use `yarn eval curator` (production) or `yarn eval curator --label draft`.
+
+**How to read the table.** Each cell is a score from 0 to 1 (1 is perfect). With repeats it shows the mean,
+then the lowest and highest repeat in brackets, for example `0.62 (0.58-0.66)`. If two prompts differ by less
+than their spread, the difference is noise.
+
+| Column       | What it means                                                                      |
+| ------------ | ---------------------------------------------------------------------------------- |
+| Prompt       | The prompt name, version and label, for example `reel-components@v13 (draft)`.     |
+| Runs ok      | Curator calls that gave a valid answer, over all calls asked, for example `43/45`. |
+| Overall F1   | All components together, visuals included. A list counts as one pick.              |
+| accent       | F1 of the accents against your accent marks.                                       |
+| bigword      | The same for big words.                                                            |
+| list (items) | The same for the items inside lists (not the lists as a whole).                    |
+| question     | The same for questions.                                                            |
+| visual       | The same for visuals (the places for a picture).                                   |
+
+F1 joins two numbers: precision (how many of the curator's picks are yours) and recall (how many of your
+marks the curator found). A run that fails counts as an answer with no picks: it lowers recall (its marks are
+missed) and leaves precision alone (it has no picks to be wrong). So a flaky prompt scores worse, and `Runs ok`
+next to the scores shows why. An empty cell (`n/a`) means there was nothing to score for it.
+
+**Old numbers are not comparable.** The scoring changed on 2026-11-24: visuals joined the overall F1, the
+list column counts items, and the judge left the curator eval. PostHog keeps the overall under the new
+name `curator_f1_overall`. Every experiment from the new scoring carries the application version
+`scoring-2026-11-24` (the code adds it to each upload by itself), so filter the experiments of suite
+`components-curator` by that application version and ignore the older ones. Run the base again before you
+compare with an old number.
+
+**If a run stops half way** (a PostHog 409 or a scope error, say): fix the cause and run the command again.
+The experiment that was open shows as failed in PostHog; ignore it. Rows already printed in the console
+are from prompts that finished and were uploaded.
+
+**Cost and time.** About $0.08 for one prompt with `--repeats 5` on the 9 reels (45 Haiku curator calls, no
+judge calls), and about 12 minutes, since the calls run one after the other. A comparison is two prompts, so
+about twice that.
+
+**Where the results are.**
+
+- The console prints one row as each prompt finishes, then the table with the dataset revision and the cost.
+- `apps/worker/eval-output/curator-<time>.html`: one report per prompt, with the table, the scores by
+  component and by reel, and your marks beside each run's picks (gitignored: it quotes transcripts).
+- `apps/worker/eval-output/curator-compare-<time>.html`: the table of a comparison, with the path of each
+  prompt's report.
+- PostHog: one experiment per prompt, suite `components-curator`, with one score per column.
+
+**The rule.** Compare on one dataset revision (printed at the top of the table and in the report). If you
+change your marks in the dataset between two runs, run production again. Move the `production` label only for
+a draft that clearly wins.
+
+**Other commands.** `yarn eval judge --dry-run` (free) and `yarn eval judge` run the judge eval, which is the
+judge prompt measured against your marks, not a prompt test. `yarn eval help` lists every option. Every
+command first refreshes the copy of the app's data the labelled reels are read from, for any reel whose copy
+is missing or out of date, and prints one line per refreshed reel. You never run a snapshot step yourself.
 
 ## Technical details
 
 ## Overview
 
-The owner labelled six reels by hand: which words are an ACCENT, a BIGWORD, a LIST, a QUESTION, and
+The owner labelled nine reels by hand: which words are an ACCENT, a BIGWORD, a LIST, a QUESTION, and
 which lines hold nothing. The labels live in PostHog as the dataset `owner-reels` (project 312096).
 An LLM judge (prompt `reel-components-judge` in PostHog, model Haiku 5.5) reads a reel's script and a
 set of picks and answers approve or reject for each. This eval measures how often the judge agrees
@@ -109,14 +161,13 @@ The personal key needs `dataset:write` besides the scopes of the eval (a refusal
 From the repository root, on the Mac (not in the worker container), with the local stack up:
 
 ```
-yarn workspace @edit-issebya/worker eval judge --dry-run
-yarn workspace @edit-issebya/worker eval judge
-yarn workspace @edit-issebya/worker eval judge --reel 9dfd03d8 --label staging
-yarn workspace @edit-issebya/worker eval judge --prompt-file ~/judge-draft.txt
-yarn workspace @edit-issebya/worker eval curator --dry-run
-yarn workspace @edit-issebya/worker eval curator --repeats 3
-yarn workspace @edit-issebya/worker eval snapshot --dry-run
-yarn workspace @edit-issebya/worker eval help
+yarn eval judge --dry-run
+yarn eval judge
+yarn eval judge --reel 9dfd03d8 --label staging
+yarn eval judge --prompt-file ~/judge-draft.txt
+yarn eval compare --draft --dry-run
+yarn eval snapshot --dry-run
+yarn eval help
 ```
 
 One entry, `src/eval.ts`, routed by `src/evals/command.ts`: the options are checked before anything runs (a
@@ -125,7 +176,7 @@ label with a draft file, a repeat count out of range, an option the subcommand d
 - `--dry-run`: everything except the judge calls, the upload and the refresh's writes (a stale reel is listed as
   `would refresh`). Prints, per labelled reel, the
   curator runs found, the picks and their good and bad labels, and the judge calls it would make
-  (one owner call per reel, one per curator run: 6 + 12 = 18 for the current dataset). Free.
+  (one owner call per reel, one per curator run: the dry run prints the total for the current dataset). Free.
 - `--reel <id>`: only the labelled reel whose id starts like this.
 - `--label <label>`: the judge prompt's label in PostHog (default `POSTHOG_PROMPT_LABEL`, else
   `production`).
@@ -217,8 +268,9 @@ Lists compare by items. An owner item is found when a curator item shares a word
 names an item by its key words); a list is good when at least half of the owner's items are found and
 at least half of its own items found one. For a list, `partial` comes before `wrong-component`. A
 `sections` list (whole passages of the reel) never makes a pick inside it the wrong component: the
-owner marks accents and big words inside sections. VISUAL and the hook are not scored: the owner's
-visual marks are ignored.
+owner marks accents and big words inside sections. A VISUAL mark collides with nothing either, and a visual is
+never sent to the judge (the judge eval ignores the owner's visual marks and the stored runs' visuals). The
+hook is not scored.
 
 ### What PostHog gets
 
@@ -238,29 +290,40 @@ visual marks are ignored.
 
 ## The curator eval
 
-`eval curator` runs the components prompt (`reel-components`, the decide step's curator call) on each
-labelled reel and scores its picks against the owner's marks, so curator drafts can be compared. The
-judge then rates the same picks, as a second check. Code: `apps/worker/src/eval.ts` (the
-command), `apps/worker/src/evals/run-curator.ts` (the run), `curator-input.ts` (the case, rebuilt from the
-item's `input.curator_input`), `curator-call.ts` (the call and its checks), `curator-score.ts` (the counts),
-`curator-report.ts`.
+`eval curator` and `eval compare` run the components prompt (`reel-components`, the decide step's curator
+call) on each labelled reel and score its picks against the owner's marks, by code. The judge is not part of
+it: no judge call, no judge scorer. Code: `apps/worker/src/eval.ts` (the command),
+`apps/worker/src/evals/run-curator.ts` (the run of one prompt), `run-compare.ts` (the prompts of a
+comparison, one after the other), `curator-input.ts` (the case, rebuilt from the item's
+`input.curator_input`), `curator-call.ts` (the call and its checks), `curator-score.ts` (the counts and the
+`COLUMNS`), `compare-table.ts` (the table), `curator-report.ts`.
 
 ```
-yarn workspace @edit-issebya/worker eval curator --dry-run
-yarn workspace @edit-issebya/worker eval curator
-yarn workspace @edit-issebya/worker eval curator --repeats 3 --reel 9dfd03d8
-yarn workspace @edit-issebya/worker eval curator --curator-prompt-file ~/curator-draft.txt
+yarn eval compare --draft --dry-run
+yarn eval compare --draft
+yarn eval compare --label next --repeats 3
+yarn eval curator --label draft --reel 9dfd03d8
 ```
 
-- `--dry-run`: builds every input and prints the counts and the skipped reels. No AI call, no upload.
-- `--repeats <n>`: curator calls per reel, 1 to 20 (default 1), to see the variance between runs.
-- `--curator-label <label>` or `--curator-prompt-file <path>`: the components prompt from PostHog at
-  that label (default `production`), or a draft from a local file. Never both.
-- `--judge-label <label>` or `--judge-prompt-file <path>`: the same for the judge (`reel-components-judge`).
+- `compare --draft` (or `--label <label>`, never both, never `production`): the production prompt first, then
+  the version of `reel-components` that carries the label (`--draft` is the label `draft`). Both are fetched
+  from PostHog before any paid call and their versions are printed (`prompt draft: reel-components@v13`); a
+  label no version carries stops the command with how to add it, and two labels on the same version print a
+  note. Then each prompt runs in turn on the one dataset revision read first, with the same repeats (default 5).
+  The row of each finished prompt is printed at once, and the closing table (with the cost) is printed even
+  when a later prompt fails. A crash in the second prompt keeps the first's results.
+- `curator [--label <label>]`: one prompt (default `production`), repeats default 1, a table of one row.
+- `--dry-run`: builds every input, fetches the prompts, prints the counts and the skipped reels. No AI call,
+  no upload, and for `compare` the counts once.
+- `--repeats <n>`: curator calls per reel, 1 to 20, to see the variance between runs.
 - `--reel <id>`: only the labelled reel whose id starts like this.
 
-It reads `apps/worker/.env.development` for `OPENROUTER_API_KEY` and the PostHog variables, with the same
-personal key scopes as the judge eval, plus `llm_prompt:read` for each label. The database and R2 variables are read by the refresh step only.
+There is no prompt file: a curator prompt is tried as a labelled version in PostHog, which is also how it
+reaches the worker. The judge eval keeps its own `--prompt-file` (see "Drafts").
+
+It reads `apps/worker/.env.development` for `OPENROUTER_API_KEY` and the PostHog variables, with `llm_prompt:read`
+for each label and the same dataset and experiment scopes as the judge eval (no `llm_analytics` scope beyond
+making the scorers). The database and R2 variables are read by the refresh step only.
 
 **The input.** Built per labelled reel from the item's `input.curator_input` (written by the snapshot,
 below), exactly as the decide step builds the components call:
@@ -284,46 +347,59 @@ which is listed and not scored. The one difference from the worker is the font p
 the owner's profile): it changes measuring, not what the answer says.
 
 **The score (code, labels as the judge eval's).** A pick is good when it matches an owner mark of its
-component (`matchesMark`, the labels' rule). Per component (accent, bigword, list, question): precision =
-good picks over picks; recall = owner marks matched by a pick over owner marks; F1 of the two. Overall and
-per reel the counts are summed over every run before the ratios are taken, so repeats weigh as runs.
-Precision is 0 with no picks, recall is 0 with no marks, F1 is null only when there is nothing to score.
-VISUAL and the hook are not scored.
+component (`matchesMark`, the labels' rule). Per component (accent, bigword, list, question, visual):
+precision = good picks over picks; recall = owner marks matched by a pick over owner marks; F1 of the two.
+Overall and per reel the counts are summed over every run before the ratios are taken, so repeats weigh as
+runs. Precision is 0 with no picks, recall is 0 with no marks, F1 is null only when there is nothing to
+score. The hook is not scored (it has its own LLM call).
 
-**The judge.** `reel-components-judge` (its label or draft), one call per answer with that answer's picks
-only, merged and shuffled as in the judge eval, and never the labels. The judge approval rate is approved
-over the distinct picks sent. An answer with no picks makes no judge call.
+The list has a second score, by items (`scoreListItems`). A curator item and an owner item are paired only when
+the words they share are at least half of all the words the two cover (`itemMatches`); the most alike pairs
+go first, and an item is in one pair only. Curator items are the picks and owner items the marks of the usual
+precision, recall and F1. A list the owner did not mark costs precision, a list the curator missed costs
+recall. An owner list of level `sections` (whole passages) is left out: the curator never gives a passage as an
+item. The list column of the table is this score; the report shows it as "list (items)", and notes the
+whole-list counts (a list as one pick, as the overall counts it) under the table.
 
-**The report.** `apps/worker/eval-output/curator-<time>.html` (gitignored): the F1, precision, recall and
-judge approval; the tables by component and by reel (the F1 range over the runs); the skipped reels, the
-failed calls; and per reel the owner's marks beside each run's picks, each pick with its label and the
-judge's verdict.
+**A failed run** (no valid answer after the retry) scores as an answer with no picks: every owner mark of its
+reel is missed (recall drops; precision has no pick to count), and it stays in every denominator. It is counted in `Runs ok`, listed in the report and marked
+`error` in the upload.
 
-**PostHog.** An offline experiment, suite `components-curator`, pinned to the dataset revision.
-`prompt_version` is the curator's identity (`reel-components@v<N>`, or `draft:<sha12>`),
-`application_version` the judge's, `model_version` the decide and judge models. One item per reel: its
-input (script, hook, intensity, target), its runs as sent and answered, the owner's marks as expected
-output, and the metadata (both prompt identities, labels and files, both models, the run counts). Two
-results per item: `curator_f1` and `judge_approval` (0 to 1), `skipped` when nothing could be scored,
-`error` (`curator_answer_invalid`, `judge_answer_invalid`) when every call of that kind failed.
+**The comparison table** (`compare-table.ts`). One row per prompt: `Runs ok`, then the columns of `COLUMNS` in
+`curator-score.ts`, the overall F1 first, then one per component. Each `COLUMNS` entry holds the heading, the
+PostHog scorer's name and description and the counts the F1 is taken from. A repeat is one curator run of
+every reel; its counts are pooled over the reels and the F1 taken. A cell is the mean of the repeats' F1 and
+their lowest and highest. The dataset revision is read once per command, by the refresh step, and every
+prompt of a comparison reads that revision; it is printed with the table. A new component (a SECTION)
+needs its name in `COMPONENTS`, its owner marks in `parseOwnerItem`, its picks in `picksOfAnswer` and one
+entry in `COLUMNS` (and `isJudged` if the judge does not know it); the table, the scorers and the report
+follow.
 
-**Drafts.** The curator draft follows the judge's draft rules (see "Drafts"): a local file outside the
-repository, the id `draft:<sha12>` in the report and the experiment, label `draft`. Its inputs are
-`script`, `hook`, `intensity` and `target_picks`: a draft with no placeholder is the system message and
-they are the user message's sections; a draft with the placeholders `{{script}}`, `{{hook}}`,
-`{{intensity}}` and `{{target_picks}}` is filled and sent as one message.
+**The report.** `apps/worker/eval-output/curator-<time>.html` (gitignored): the comparison table (one row);
+the F1, precision and recall; the tables by component and by reel (the F1 range over the runs); the skipped
+reels, the failed calls; and per reel the owner's marks beside each run's picks, each pick with its label.
+A comparison also writes `curator-compare-<time>.html`: the table of every prompt and the path of each
+prompt's report.
 
-**Workflow.**
+**PostHog.** An offline experiment per prompt, suite `components-curator`, pinned to the dataset revision.
+`prompt_version` is the curator's identity (`reel-components@v<N>`), `model_version` the decide model, and
+`application_version` is `SCORING_VERSION` (`scoring-2026-11-24`, in `run-curator.ts`): every upload carries
+it, so the experiments made before a scoring change are told apart. Change it when what a score means
+changes. One item per reel: its input (script, hook, intensity, target), its runs as sent and answered, the
+owner's marks as expected output, and the metadata (the prompt version and label, the model, the scoring
+version, the run counts). One result per scorer per item (0 to 1): `curator_f1_overall`,
+`curator_f1_accent`, `curator_f1_bigword`, `curator_f1_list` (items), `curator_f1_question` and
+`curator_f1_visual`. A result is `skipped` when nothing could be scored for it (a component the reel has no
+mark and no pick of), and `error` (`curator_answer_invalid`) when every call of the reel failed.
 
-1. Write the draft in a file outside the repository.
-2. `eval curator --dry-run --curator-prompt-file <path>`: the inputs and the counts, free.
-3. `eval curator --curator-prompt-file <path> --repeats 3`: the scores, and the spread over three runs.
-4. Iterate on the file, comparing the experiments by their `draft:<sha12>` ids.
-5. Only for a winner: publish the text as a new `reel-components` version in PostHog, set its label, then
-   `eval curator --curator-label <label>` to confirm the same numbers under that version.
+**Prompts.** The curator prompt is read from PostHog at a label (`production`, `draft` or another), the way
+the worker reads it (`app_docs/decide-step.md`, "Prompts"): a version with no `{{name}}` placeholder is the
+system message and the inputs `script`, `hook`, `intensity` and `target_picks` are the user message's
+sections; one with placeholders is filled and sent as one message. The eval has no prompt file: a prompt
+draft is a labelled version in PostHog, which keeps the tried text and the live text in one place.
 
-Cost: one curator call per reel per repeat (plus one retry on a refused answer) and at most as many judge
-calls. Run `--dry-run` first.
+Cost: one curator call per reel per repeat (plus one retry on a refused answer); about $0.08 for the 9 reels
+at `--repeats 5`, once per prompt. Run `--dry-run` first.
 
 ## Rules
 
@@ -331,14 +407,20 @@ calls. Run `--dry-run` first.
   no version, no AI record. Its writes are the AI calls, the report and the PostHog experiment.
 - The curator's input is the decide step's and nothing more: never the owner's marks or a
   stored answer added to the prompt. The owner's marks are scored only, never shown to the curator.
-- The judge never sees a label, the curator's source or the owner's marks in its call.
-- The components prompt's wording lives only in PostHog (`reel-components`) or in a draft file outside the
-  repository, never in the repository.
+- The curator eval makes no judge call and uploads no judge score. The judge is measured by its own eval.
+- The components prompt's wording lives only in PostHog (`reel-components`), never in the repository and
+  never in a file: a draft is a version labelled `draft`.
 - A reel that cannot be rebuilt is skipped and named in the log and the report, never guessed.
 - A stored value that differs from the rebuilt one is noted, never used in its place.
-- The ratios are taken after the counts are summed, and the visuals and the hook are not scored.
+- The ratios are taken after the counts are summed. The hook is not scored. A visual is scored by code only
+  and never sent to the judge.
+- A failed run stays in the denominators and is counted in the table, never dropped.
+- Every prompt of a comparison runs on the one dataset revision read first, one after the other (parallel
+  runs hit a PostHog 409), and the table prints that revision.
 
 ## Drafts
+
+Only the judge eval takes a prompt file: the curator's drafts are labelled versions in PostHog (see "The curator eval").
 
 A new judge prompt is tried before PostHog holds a version of it, so PostHog gets a version only for a
 prompt that wins:
@@ -356,7 +438,7 @@ text>` (the experiment's `prompt_version`, the item's `judge_prompt_version`, la
 5. Only for a winner: publish the text as a new `reel-components-judge` version in PostHog, set its
    label, then run the eval with `--label <label>` to confirm the same agreement under that version.
 
-A draft (`--prompt-file`, `--curator-prompt-file`, `--judge-prompt-file`) is sent the way a PostHog
+A judge draft (`--prompt-file`) is sent the way a PostHog
 version is, by the same rule (`app_docs/decide-step.md`, "Messages"): a file with no `{{name}}`
 placeholder is the system message, sent unchanged and marked cacheable, and the call's inputs are the
 user message; a file with placeholders is a template, filled and sent as one message. So a
@@ -415,8 +497,9 @@ The judge and curator evals' tests feed them dataset items the snapshot made fro
 in-memory fixtures of `apps/worker/test-support/curator-fixtures.ts` and a scripted AI double: the case
 rebuilt from the stored input (its hook, the notes on stored values, the skips), the call's one retry and its
 unavailable stop, the precision, recall and F1 maths and their pooling, a dry run that makes no call,
-the drafts' ids and labels in the experiment, the upload's results (including `error` and `skipped`),
-and the report's escaping.
+the prompt's version and label in the experiment, the upload's results (including `error` and
+`skipped`), the comparison (production then the draft label on one dataset read, a missing label, a failed run,
+a later prompt's crash keeping the first row), the command's options and the report's escaping.
 
 ## Notes
 

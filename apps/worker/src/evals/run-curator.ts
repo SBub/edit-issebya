@@ -3,7 +3,7 @@ import { ROOT_CONTEXT, trace } from "@opentelemetry/api";
 import { ISSEBYA_PRESET, type Measurer, type Preset } from "@edit-issebya/edit";
 import { AI_MODELS, type AiRunner, NO_USAGE } from "../ai.ts";
 import { withAiContext } from "../ai-observability.ts";
-import { type PromptSource, type PromptText, promptIdentity } from "../prompts/source.ts";
+import { type PromptSource, promptIdentity } from "../prompts/source.ts";
 import { addUsage } from "../step-store.ts";
 import { type Telemetry, inSpan } from "../telemetry.ts";
 import type { TracedAnswer } from "../decision-trace.ts";
@@ -17,55 +17,31 @@ import {
   callCurator,
   decideValidator,
 } from "./curator-call.ts";
-import { JUDGE_PROMPT_NAME, callJudge, type Verdict } from "./judge-call.ts";
-import {
-  type Label,
-  type Labelled,
-  type Why,
-  judgePicks,
-  labelPick,
-  sentPick,
-  wordsOf,
-} from "./label.ts";
+import { type Label, type Why, labelPick, wordsOf } from "./label.ts";
 import {
   type Component,
   type ComponentPick,
   type OwnerItem,
   selectOwnerItems,
 } from "./owner-marks.ts";
-import { type DraftPrompt, draftId } from "./draft-prompt.ts";
 import type { Dataset, EvalsApi, UploadBody } from "./posthog-evals.ts";
 import { type CuratorReport, renderCuratorReport } from "./curator-report.ts";
-import {
-  type Approval,
-  NO_APPROVAL,
-  type RunScore,
-  approvalRate,
-  prf,
-  scoreRun,
-  sumRuns,
-} from "./curator-score.ts";
+import { COLUMNS, type ColumnKey, type RunScore, prf, scoreRun, sumRuns } from "./curator-score.ts";
+import { type PromptSummary, type ScoredRun, summarizePrompt } from "./compare-table.ts";
 
 // THE CURATOR EVAL (app_docs/evals.md, "The curator eval"): the components
 // prompt run on each labelled reel of the dataset, its picks scored against
-// the owner's marks by code, and each answer's picks judged in a separate call.
+// the owner's marks by code. The judge is not part of it (it has its own eval).
 // It reads the dataset items only (their curator input, written by
 // the refresh step) and writes the AI calls, the report file and the PostHog
 // experiment. It reads nothing from the database or from storage.
 
-const SCORERS = {
-  f1: "curator_f1",
-  approval: "judge_approval",
-} as const;
-const SCORER_DESCRIPTIONS = {
-  [SCORERS.f1]:
-    "F1 of the components curator's picks against the owner's labelled marks (accents, questions, big words, lists), 0 to 1 per labelled reel.",
-  [SCORERS.approval]:
-    "Share of the curator's picks the components judge approves, 0 to 1 per labelled reel.",
-} as const;
+// One scorer per column of the comparison table (`COLUMNS`).
 const SUITE = "components-curator";
-// The shuffle's fixed seed: the same run shows the judge the same order.
-const SEED = "components-curator-1";
+// Every upload of this scoring carries it as the experiment's application
+// version, so the experiments made before it are told apart in PostHog.
+// Change it when what a score means changes.
+export const SCORING_VERSION = "scoring-2026-11-24";
 
 export interface CuratorEvalOptions {
   datasetId: string;
@@ -73,16 +49,12 @@ export interface CuratorEvalOptions {
   reel?: string;
   // Curator calls per reel.
   repeats: number;
-  // Drafts read from local files, judged or curated in place of PostHog's prompt.
-  curatorDraft?: DraftPrompt;
-  judgeDraft?: DraftPrompt;
 }
 
 export interface CuratorEvalDeps {
   posthog: EvalsApi;
-  // The curator's prompt source (its label) and the judge's (its label).
+  // The curator's prompt source (at the label under test).
   curatorPrompts: PromptSource;
-  judgePrompts: PromptSource;
   ai: AiRunner;
   telemetry: Telemetry;
   measurerOf: MeasurerOf;
@@ -102,18 +74,19 @@ export interface CuratorEvalSummary {
   skipped: { reel: string; reason: string }[];
   // Absent on a dry run.
   experimentId?: string;
-  curatorF1?: number | null;
-  judgeApproval?: number | null;
+  // The dataset revision the run read, and the prompt's row of the comparison table.
+  datasetRevision?: number;
+  summary?: PromptSummary;
   reportPath?: string;
+  costUsd?: number;
 }
 
-// One curator call of a case: the picks it answered, labelled, with the judge's verdicts.
+// One curator call of a case: the picks it answered, labelled.
 interface ReportPick {
   component: Component;
   words: string;
   label: Label;
   why: Why;
-  verdict: "approve" | "reject" | null;
 }
 
 interface RunRecord {
@@ -121,27 +94,23 @@ interface RunRecord {
   // Why the answer was refused twice (no picks then).
   failed?: string[];
   picks: ReportPick[];
-  score?: RunScore;
-  // The judge's answer on this run's picks, or why it gave none.
-  judge?: { judged: number; approved: number } | { failed: string[] } | null;
+  // A run with no valid answer scores as an answer with no picks.
+  score: RunScore;
 }
 
 interface CaseResult {
   built: CuratorCase;
   runs: RunRecord[];
   score: RunScore;
-  approval: Approval;
-  judgeFailed: number;
 }
 
-// The identity of a pick across the labels and the judge's merged picks.
-function keyOf(pick: {
-  component: string;
-  span: { from: number; to: number };
-  items?: { from: number; to: number }[];
-}): string {
-  const items = (pick.items ?? []).map((item) => `${item.from}-${item.to}`).join(",");
-  return `${pick.component}:${pick.span.from}-${pick.span.to}:${items}`;
+// The runs of a case as the comparison table reads them.
+function scoredRuns(result: CaseResult): ScoredRun[] {
+  return result.runs.map((run) => ({
+    repeat: run.repeat,
+    ok: !run.failed,
+    score: run.score,
+  }));
 }
 
 function pickWords(pick: ComponentPick, words: OwnerItem["words"]): string {
@@ -156,16 +125,14 @@ function curatorUploadBody({
   traceId,
   evaluatedAt,
   curator,
-  judge,
   repeats,
   newId,
 }: {
   results: readonly CaseResult[];
-  scorers: Record<keyof typeof SCORERS, string>;
+  scorers: Record<ColumnKey, string>;
   traceId: string;
   evaluatedAt: string;
-  curator: { id: string; label: string; file?: string };
-  judge: { id: string; label: string; file?: string };
+  curator: { id: string; label: string };
   repeats: number;
   newId: () => string;
 }): UploadBody {
@@ -181,12 +148,8 @@ function curatorUploadBody({
       version_number: built.versionNumber,
       curator_prompt_version: curator.id,
       curator_prompt_label: curator.label,
-      ...(curator.file ? { curator_prompt_file: curator.file } : {}),
-      judge_prompt_version: judge.id,
-      judge_prompt_label: judge.label,
-      ...(judge.file ? { judge_prompt_file: judge.file } : {}),
       curator_model: AI_MODELS.decide,
-      judge_model: AI_MODELS.judge,
+      scoring: SCORING_VERSION,
       repeats,
       curator_runs_ok: curatorRuns,
       curator_runs_failed: failedRuns.length,
@@ -208,7 +171,6 @@ function curatorUploadBody({
             repeat: run.repeat,
             ...(run.failed ? { error: run.failed } : {}),
             picks: run.picks,
-            judge: run.judge ?? null,
           })),
         },
         expected_output: {
@@ -221,64 +183,41 @@ function curatorUploadBody({
       },
     });
     const shared = { item_id: id, evaluator_trace_id: traceId, evaluated_at: evaluatedAt };
-    const f1 = prf(result.score.overall).f1;
-    if (curatorRuns === 0) {
-      body.results.push({
-        ...shared,
-        scorer_version_id: scorers.f1,
-        status: "error",
-        error_code: "curator_answer_invalid",
-        payload: {
-          error_message: failedRuns.flatMap((run) => run.failed ?? []).join("; "),
-          metadata: { ...metadata, overall: result.score.overall },
-        },
-      });
-    } else if (f1 === null) {
-      body.results.push({
-        ...shared,
-        scorer_version_id: scorers.f1,
-        status: "skipped",
-        payload: { reasoning: "no curator pick and no owner mark", metadata },
-      });
-    } else {
-      body.results.push({
-        ...shared,
-        scorer_version_id: scorers.f1,
-        status: "ok",
-        value: f1,
-        payload: {
-          reasoning: `F1 ${f1.toFixed(3)} over ${curatorRuns} curator runs: ${result.score.overall.good} of ${result.score.overall.picks} picks good, ${result.score.overall.matched} of ${result.score.overall.marks} owner marks matched`,
-          metadata: { ...metadata, overall: result.score.overall },
-        },
-      });
-    }
-    const rate = approvalRate(result.approval);
-    if (result.judgeFailed > 0 && result.approval.judged === 0) {
-      body.results.push({
-        ...shared,
-        scorer_version_id: scorers.approval,
-        status: "error",
-        error_code: "judge_answer_invalid",
-        payload: { error_message: "the judge gave no valid answer on any run", metadata },
-      });
-    } else if (rate === null) {
-      body.results.push({
-        ...shared,
-        scorer_version_id: scorers.approval,
-        status: "skipped",
-        payload: { reasoning: "no curator pick to judge", metadata },
-      });
-    } else {
-      body.results.push({
-        ...shared,
-        scorer_version_id: scorers.approval,
-        status: "ok",
-        value: rate,
-        payload: {
-          reasoning: `the judge approves ${result.approval.approved} of ${result.approval.judged} distinct picks over the curator runs`,
-          metadata,
-        },
-      });
+    for (const column of COLUMNS) {
+      const key = column.key;
+      const counts = column.counts(result.score);
+      const f1 = prf(counts).f1;
+      const scorer = scorers[key];
+      if (curatorRuns === 0) {
+        body.results.push({
+          ...shared,
+          scorer_version_id: scorer,
+          status: "error",
+          error_code: "curator_answer_invalid",
+          payload: {
+            error_message: failedRuns.flatMap((run) => run.failed ?? []).join("; "),
+            metadata: { ...metadata, counts },
+          },
+        });
+      } else if (f1 === null) {
+        body.results.push({
+          ...shared,
+          scorer_version_id: scorer,
+          status: "skipped",
+          payload: { reasoning: `no curator pick and no owner mark for ${key}`, metadata },
+        });
+      } else {
+        body.results.push({
+          ...shared,
+          scorer_version_id: scorer,
+          status: "ok",
+          value: f1,
+          payload: {
+            reasoning: `${key} F1 ${f1.toFixed(3)} over ${curatorRuns} of ${result.runs.length} curator runs (a failed run counts as no picks): ${counts.good} of ${counts.picks} picks good, ${counts.matched} of ${counts.marks} owner marks matched`,
+            metadata: { ...metadata, counts },
+          },
+        });
+      }
     }
   }
   return body;
@@ -328,65 +267,37 @@ export async function runCuratorEval(
     for (const note of c.notes) log(`  note: ${note}`);
   }
   log(
-    `total: ${cases.length} reels with a curator input, ${skipped.length} skipped, ${cases.length * options.repeats} curator calls, at most as many judge calls (one per answer with picks)`,
+    `total: ${cases.length} reels with a curator input, ${skipped.length} skipped, ${cases.length * options.repeats} curator calls`,
   );
   if (options.dryRun) {
     log("dry run: no AI call, no upload");
     return { built: cases.length, skipped };
   }
 
-  // Before any paid call: the prompts, the scorers and the experiment, so a
+  // Before any paid call: the prompt, the scorers and the experiment, so a
   // missing prompt or key scope costs nothing.
-  const curatorTemplate: PromptText = options.curatorDraft
-    ? {
-        name: "draft",
-        version: 0,
-        label: "draft",
-        text: options.curatorDraft.text,
-        draftId: draftId(options.curatorDraft.text),
-      }
-    : await deps.curatorPrompts.get(CURATOR_PROMPT_NAME);
-  const judgeTemplate: PromptText = options.judgeDraft
-    ? {
-        name: "draft",
-        version: 0,
-        label: "draft",
-        text: options.judgeDraft.text,
-        draftId: draftId(options.judgeDraft.text),
-      }
-    : await deps.judgePrompts.get(JUDGE_PROMPT_NAME);
-  const curator = {
-    id: options.curatorDraft ? draftId(options.curatorDraft.text) : promptIdentity(curatorTemplate),
-    label: curatorTemplate.label,
-    ...(options.curatorDraft ? { file: options.curatorDraft.file } : {}),
-  };
-  const judge = {
-    id: options.judgeDraft ? draftId(options.judgeDraft.text) : promptIdentity(judgeTemplate),
-    label: judgeTemplate.label,
-    ...(options.judgeDraft ? { file: options.judgeDraft.file } : {}),
-  };
-  const scorers = {
-    f1: await posthog.scorerVersion(SCORERS.f1, SCORER_DESCRIPTIONS[SCORERS.f1]),
-    approval: await posthog.scorerVersion(SCORERS.approval, SCORER_DESCRIPTIONS[SCORERS.approval]),
-  };
+  const curatorTemplate = await deps.curatorPrompts.get(CURATOR_PROMPT_NAME);
+  const curator = { id: promptIdentity(curatorTemplate), label: curatorTemplate.label };
+  const scorers = {} as Record<ColumnKey, string>;
+  for (const column of COLUMNS) {
+    scorers[column.key] = await posthog.scorerVersion(column.scorer, column.description);
+  }
   const experimentId = newId();
   const traceId = experimentId.replaceAll("-", "");
-  const described = (part: { id: string; label: string; file?: string }) =>
-    `${part.id} (${part.file ? `${part.label} ${part.file}` : part.label})`;
   await posthog.createExperiment({
     id: experimentId,
-    name: `components curator ${described(curator)}, judge ${described(judge)} ${startedAt}`,
+    name: `components curator ${curator.id} (${curator.label}) ${startedAt}`,
     started_at: startedAt,
     run_source: "local",
     suite_key: SUITE,
     dataset_revision_id: dataset.revisionId,
     expected_item_count: cases.length,
-    expected_result_count: cases.length * 2,
-    model_version: [...new Set([AI_MODELS.decide, AI_MODELS.judge])].join(", "),
+    expected_result_count: cases.length * COLUMNS.length,
+    model_version: AI_MODELS.decide,
     prompt_version: curator.id,
-    application_version: `judge ${judge.id}`.slice(0, 255),
+    application_version: SCORING_VERSION,
   });
-  log(`experiment ${experimentId}, curator ${described(curator)}, judge ${described(judge)}`);
+  log(`experiment ${experimentId}, curator ${curator.id} (${curator.label})`);
 
   try {
     const root = telemetry.startRootSpan(traceId, "eval.curator", {
@@ -400,11 +311,11 @@ export async function runCuratorEval(
     const results: CaseResult[] = [];
     let usage = NO_USAGE;
     // Every call's generation event names this run (the experiment) as its trace.
-    const aiFor = (c: CuratorCase, source: string) =>
+    const aiFor = (c: CuratorCase) =>
       withAiContext(deps.ai, {
         traceId: experimentId,
         reelId: c.reelId,
-        properties: { source, eval_suite: SUITE, eval_case: c.item.caseKey },
+        properties: { source: "eval:curator", eval_suite: SUITE, eval_case: c.item.caseKey },
       });
     try {
       for (const c of cases) {
@@ -428,7 +339,7 @@ export async function runCuratorEval(
             { "reel.id": c.reelId, "eval.case": c.item.caseKey, "eval.repeat": repeat },
             (_span, context) =>
               callCurator({
-                ai: aiFor(c, "eval:curator"),
+                ai: aiFor(c),
                 template: curatorTemplate,
                 input: c.input,
                 preset,
@@ -439,116 +350,52 @@ export async function runCuratorEval(
           );
           usage = addUsage(usage, outcome.usage);
           if (!outcome.ok) {
-            runs.push({ repeat, picks: [], failed: outcome.reasons });
+            runs.push({
+              repeat,
+              picks: [],
+              failed: outcome.reasons,
+              score: scoreRun([], c.item.marks),
+            });
             log(`  ${c.reelId} run ${repeat}: no valid answer: ${outcome.reasons.join("; ")}`);
             continue;
           }
-          const labelOf = (pick: ComponentPick): Labelled =>
-            labelPick(pick, c.item.marks, c.item.nothing);
           const { picks } = picksOfAnswer(outcome.answer as TracedAnswer, c.transcript);
-          const labelled = picks.map((pick) => ({ pick, label: labelOf(pick) }));
-          const judged = judgePicks("curator", picks, labelOf, `${SEED}/${c.reelId}/${repeat}`);
-          let judgeRecord: RunRecord["judge"] = null;
-          const verdictOf = new Map<string, "approve" | "reject">();
-          if (judged.length > 0) {
-            const sent = judged.map((pick) => sentPick(pick, c.item.words));
-            const answer = await inSpan(
-              telemetry,
-              rootContext,
-              "eval.judge.call",
-              { "reel.id": c.reelId, "eval.case": c.item.caseKey, "eval.source": "curator" },
-              (_span, context) =>
-                callJudge({
-                  ai: aiFor(c, "eval:curator-judge"),
-                  template: judgeTemplate,
-                  transcript: c.transcript,
-                  picks: sent,
-                  trace: { telemetry, parent: context },
-                }),
-            );
-            usage = addUsage(usage, answer.usage);
-            if (answer.ok) {
-              const byId = new Map(
-                answer.verdicts.map((verdict: Verdict) => [verdict.pick, verdict]),
-              );
-              for (const pick of judged) {
-                verdictOf.set(keyOf(pick), byId.get(pick.id)!.verdict);
-              }
-              judgeRecord = {
-                judged: judged.length,
-                approved: answer.verdicts.filter((verdict) => verdict.verdict === "approve").length,
-              };
-            } else {
-              judgeRecord = { failed: answer.reasons };
-            }
-          }
+          const labelled = picks.map((pick) => ({
+            pick,
+            label: labelPick(pick, c.item.marks, c.item.nothing),
+          }));
           const score = scoreRun(labelled, c.item.marks);
           runs.push({
             repeat,
             score,
-            judge: judgeRecord,
             picks: labelled.map(({ pick, label }) => ({
               component: pick.component,
               words: pickWords(pick, c.item.words),
               label: label.label,
               why: label.why,
-              verdict: verdictOf.get(keyOf(pick)) ?? null,
             })),
           });
-          const judgeLine =
-            judgeRecord === null
-              ? "no judge call"
-              : "failed" in judgeRecord
-                ? `judge no valid answer: ${judgeRecord.failed.join("; ")}`
-                : `judge approves ${judgeRecord.approved} of ${judgeRecord.judged}`;
           log(
-            `  ${c.reelId} run ${repeat}: ${picks.length} picks, ${score.overall.good} good, ${score.overall.matched} of ${score.overall.marks} marks matched, F1 ${String(prf(score.overall).f1?.toFixed(3) ?? "n/a")}, ${judgeLine}`,
+            `  ${c.reelId} run ${repeat}: ${picks.length} picks, ${score.overall.good} good, ${score.overall.matched} of ${score.overall.marks} marks matched, F1 ${String(prf(score.overall).f1?.toFixed(3) ?? "n/a")}`,
           );
         }
-        const scored = sumRuns(runs.flatMap((run) => (run.score ? [run.score] : [])));
-        const approval = runs.reduce<Approval>(
-          (total, run) =>
-            run.judge && "judged" in run.judge
-              ? {
-                  judged: total.judged + run.judge.judged,
-                  approved: total.approved + run.judge.approved,
-                }
-              : total,
-          NO_APPROVAL,
-        );
-        results.push({
-          built: c,
-          runs,
-          score: scored,
-          approval,
-          judgeFailed: runs.filter((run) => run.judge && "failed" in run.judge).length,
-        });
+        results.push({ built: c, runs, score: sumRuns(runs.map((run) => run.score)) });
       }
     } finally {
       root.end();
     }
 
     const overall = sumRuns(results.map((result) => result.score));
-    const approvals = results.reduce<Approval>(
-      (total, result) => ({
-        judged: total.judged + result.approval.judged,
-        approved: total.approved + result.approval.approved,
-      }),
-      NO_APPROVAL,
-    );
-    const curatorF1 = prf(overall.overall).f1;
-    const judgeApproval = approvalRate(approvals);
+    const summary = summarizePrompt(curator, options.repeats, results.map(scoredRuns));
     const report: CuratorReport = {
       startedAt,
       curator,
-      judge,
       decideModel: AI_MODELS.decide,
-      judgeModel: AI_MODELS.judge,
       repeats: options.repeats,
       datasetRevision: dataset.revision,
       experimentId,
+      summary,
       overall,
-      approval: approvals,
       cases: results.map((result) => ({
         reel: result.built.reelId,
         versionNumber: result.built.versionNumber,
@@ -561,16 +408,12 @@ export async function runCuratorEval(
         })),
         runs: result.runs,
         score: result.score,
-        approval: result.approval,
       })),
       skipped,
     };
     const reportPath = await deps.saveReport(
       `curator-${startedAt.replaceAll(":", "-")}.html`,
       renderCuratorReport(report),
-    );
-    log(
-      `curator F1 ${curatorF1 === null ? "n/a" : curatorF1.toFixed(3)}, judge approval ${judgeApproval === null ? "n/a" : (judgeApproval * 100).toFixed(1) + "%"} (${approvals.approved} of ${approvals.judged} distinct picks)`,
     );
     if (usage.costUsd !== null) log(`cost: $${usage.costUsd.toFixed(4)}`);
     log(`report: ${reportPath}`);
@@ -583,7 +426,6 @@ export async function runCuratorEval(
         traceId,
         evaluatedAt: now().toISOString(),
         curator,
-        judge,
         repeats: options.repeats,
         newId,
       }),
@@ -594,9 +436,10 @@ export async function runCuratorEval(
       built: cases.length,
       skipped,
       experimentId,
-      curatorF1,
-      judgeApproval,
+      datasetRevision: dataset.revision,
+      summary,
       reportPath,
+      ...(usage.costUsd !== null ? { costUsd: usage.costUsd } : {}),
     };
   } catch (error) {
     // The experiment exists: close it as failed, then report the real error.

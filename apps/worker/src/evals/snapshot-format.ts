@@ -1,6 +1,7 @@
 import { headTrackSchema, transcriptSchema } from "@edit-issebya/edit";
 import { z } from "zod";
 import type { CuratorRun } from "./curator-runs.ts";
+import { COMPONENTS } from "./owner-marks.ts";
 
 // THE SNAPSHOT'S FORMAT (app_docs/evals.md, "The snapshot"): what the refresh step
 // (`refresh.ts`) copies into each dataset item, and what the judge and curator evals read back.
@@ -15,7 +16,7 @@ const spanSchema = z.object({
 });
 
 const pickSchema = z.object({
-  component: z.enum(["accent", "bigword", "list", "question"]),
+  component: z.enum(COMPONENTS),
   span: spanSchema,
   items: z.array(spanSchema).optional(),
 });

@@ -30,25 +30,58 @@ describe("parsing the eval command", () => {
     });
   });
 
-  it("parses the curator's options, its repeats defaulting to 1", () => {
-    expect(parseEvalCommand(["curator"])).toEqual({ kind: "curator", dryRun: false, repeats: 1 });
-    expect(
-      parseEvalCommand([
-        "curator",
-        "--repeats",
-        "3",
-        "--curator-label",
-        "staging",
-        "--judge-prompt-file",
-        "/tmp/judge.txt",
-      ]),
-    ).toEqual({
+  it("parses the curator's options: one label (production by default), repeats defaulting to 1", () => {
+    expect(parseEvalCommand(["curator"])).toEqual({
+      kind: "curator",
+      dryRun: false,
+      repeats: 1,
+      label: "production",
+    });
+    expect(parseEvalCommand(["curator", "--repeats", "3", "--label", "staging"])).toEqual({
       kind: "curator",
       dryRun: false,
       repeats: 3,
-      curatorLabel: "staging",
-      judgePromptFile: "/tmp/judge.txt",
+      label: "staging",
     });
+  });
+
+  it("parses compare: --draft is the draft label, repeats default to 5", () => {
+    expect(parseEvalCommand(["compare", "--draft"])).toEqual({
+      kind: "compare",
+      dryRun: false,
+      repeats: 5,
+      label: "draft",
+    });
+    expect(
+      parseEvalCommand([
+        "compare",
+        "--label",
+        "next",
+        "--repeats",
+        "2",
+        "--dry-run",
+        "--reel",
+        "ab",
+      ]),
+    ).toEqual({ kind: "compare", dryRun: true, repeats: 2, label: "next", reel: "ab" });
+  });
+
+  it("refuses compare without exactly one of --draft and --label, or with production", () => {
+    expect(() => parseEvalCommand(["compare"])).toThrow("exactly one of --draft");
+    expect(() => parseEvalCommand(["compare", "--draft", "--label", "x"])).toThrow(
+      "exactly one of --draft",
+    );
+    expect(() => parseEvalCommand(["compare", "--label", "production"])).toThrow(
+      "already runs production",
+    );
+  });
+
+  it("takes no draft file for the curator any more", () => {
+    expect(() => parseEvalCommand(["curator", "--curator-prompt-file", "/tmp/a"])).toThrow(
+      /Unknown option/,
+    );
+    expect(() => parseEvalCommand(["compare", "--compare", "/tmp/a"])).toThrow(/Unknown option/);
+    expect(() => parseEvalCommand(["curator", "--judge-label", "x"])).toThrow(/Unknown option/);
   });
 
   it("parses the snapshot subcommand's options", () => {
@@ -59,16 +92,10 @@ describe("parsing the eval command", () => {
     });
   });
 
-  it("refuses a label and a draft file for the same prompt, judge or curator", () => {
+  it("refuses a label and a draft file for the same judge prompt", () => {
     expect(() => parseEvalCommand(["judge", "--label", "x", "--prompt-file", "/tmp/a"])).toThrow(
       "mutually exclusive",
     );
-    expect(() =>
-      parseEvalCommand(["curator", "--curator-label", "x", "--curator-prompt-file", "/tmp/a"]),
-    ).toThrow("mutually exclusive");
-    expect(() =>
-      parseEvalCommand(["curator", "--judge-label", "x", "--judge-prompt-file", "/tmp/a"]),
-    ).toThrow("mutually exclusive");
   });
 
   it("refuses a repeats count out of range or not whole", () => {
@@ -110,6 +137,9 @@ describe("running the eval command", () => {
       curator: async (command) => {
         calls.push({ handler: "curator", command });
       },
+      compare: async (command) => {
+        calls.push({ handler: "compare", command });
+      },
       snapshot: async (command) => {
         calls.push({ handler: "snapshot", command });
       },
@@ -121,7 +151,10 @@ describe("running the eval command", () => {
     const { calls, handlers } = recording();
     await runEvalCommand(["curator", "--repeats", "2"], handlers);
     expect(calls).toEqual([
-      { handler: "curator", command: { kind: "curator", dryRun: false, repeats: 2 } },
+      {
+        handler: "curator",
+        command: { kind: "curator", dryRun: false, repeats: 2, label: "production" },
+      },
     ]);
     await runEvalCommand(["snapshot", "--dry-run"], handlers);
     expect(calls.at(-1)).toEqual({
