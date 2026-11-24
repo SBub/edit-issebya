@@ -1,0 +1,1315 @@
+{
+  "movable": [
+    "ACCENT",
+    "QUESTION",
+    "BIGWORD",
+    "LIST",
+    "HOOK",
+    "VISUAL",
+    "CAPTION"
+  ],
+  "placed": [
+    {
+      "id": "cw0",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw1",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw2",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw3",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw4",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw5",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw6",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw7",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw8",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw9",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw10",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw11",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw12",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw13",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw14",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw15",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw16",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw17",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw18",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw19",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw20",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw21",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw22",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw23",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw24",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw25",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw26",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw27",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw28",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw30",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw31",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw32",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw33",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw34",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw35",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw36",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw37",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw38",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw39",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw40",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw41",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw42",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw43",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw44",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw45",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw46",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw47",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw48",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw49",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw50",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw51",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw52",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw53",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw54",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw55",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw56",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw57",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw58",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw59",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw60",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw61",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw62",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw63",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw64",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw65",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw66",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw67",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw68",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw69",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw70",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw71",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw72",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw73",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw74",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw75",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw77",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw78",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw79",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw80",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw81",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw82",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw83",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw84",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw85",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw86",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw87",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw88",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw89",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw91",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw92",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw93",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw94",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw95",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw96",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw97",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw98",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw99",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw104",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw105",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw109",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw110",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw111",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw113",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw114",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw115",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw116",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw117",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw118",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw119",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw120",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw121",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw122",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw123",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw124",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw125",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw126",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw127",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw128",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw129",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw130",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw131",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw132",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw133",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw142",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw143",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw144",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw145",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw146",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw147",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw148",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw149",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw150",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw151",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw152",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw153",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw154",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw155",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw156",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw157",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw158",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw159",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw160",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "cw161",
+      "component": "CAPTION",
+      "movable": false,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "hook",
+      "component": "HOOK",
+      "movable": true,
+      "text": {
+        "text": "Gen Z won't work like you did",
+        "limit": 87
+      },
+      "parts": {}
+    },
+    {
+      "id": "accent-1",
+      "component": "ACCENT",
+      "movable": true,
+      "text": {
+        "text": "disrupted",
+        "limit": 40
+      },
+      "parts": {}
+    },
+    {
+      "id": "accent-2",
+      "component": "ACCENT",
+      "movable": true,
+      "text": {
+        "text": "purpose",
+        "limit": 40
+      },
+      "parts": {}
+    },
+    {
+      "id": "question-1",
+      "component": "QUESTION",
+      "movable": true,
+      "text": {
+        "text": "and still for most of us life doesn't?",
+        "limit": 114
+      },
+      "parts": {}
+    },
+    {
+      "id": "block_cw0",
+      "component": "CAPTION",
+      "movable": true,
+      "text": null,
+      "parts": {
+        "cw0": {
+          "text": "the time we're living",
+          "limit": 63
+        },
+        "cw4": {
+          "text": "right now push us to rethink",
+          "limit": 84
+        },
+        "cw10": {
+          "text": "how we earn",
+          "limit": 40
+        },
+        "cw13": {
+          "text": "how we spend our time",
+          "limit": 63
+        },
+        "cw18": {
+          "text": "how we allocate",
+          "limit": 45
+        },
+        "cw21": {
+          "text": "our resources",
+          "limit": 40
+        },
+        "cw23": {
+          "text": "what we do",
+          "limit": 40
+        }
+      }
+    },
+    {
+      "id": "block_cw26",
+      "component": "CAPTION",
+      "movable": true,
+      "text": null,
+      "parts": {
+        "cw26": {
+          "text": "AI has completely",
+          "limit": 51
+        },
+        "cw30": {
+          "text": "the way we work",
+          "limit": 45
+        },
+        "cw34": {
+          "text": "but at the same time it has given us a chance",
+          "limit": 135
+        },
+        "cw45": {
+          "text": "to start a business",
+          "limit": 57
+        },
+        "cw49": {
+          "text": "a project",
+          "limit": 40
+        },
+        "cw51": {
+          "text": "put those things",
+          "limit": 48
+        },
+        "cw54": {
+          "text": "out of my head",
+          "limit": 42
+        },
+        "cw58": {
+          "text": "give it to the world",
+          "limit": 60
+        }
+      }
+    },
+    {
+      "id": "block_cw63",
+      "component": "CAPTION",
+      "movable": true,
+      "text": null,
+      "parts": {
+        "cw63": {
+          "text": "social media has",
+          "limit": 48
+        },
+        "cw66": {
+          "text": "given us alternative ways to earn",
+          "limit": 99
+        },
+        "cw72": {
+          "text": "and is an excellent",
+          "limit": 57
+        },
+        "cw77": {
+          "text": "channel",
+          "limit": 40
+        },
+        "cw78": {
+          "text": "for your project",
+          "limit": 48
+        },
+        "cw81": {
+          "text": "for your idea",
+          "limit": 40
+        }
+      }
+    },
+    {
+      "id": "block_cw84",
+      "component": "CAPTION",
+      "movable": true,
+      "text": null,
+      "parts": {
+        "cw84": {
+          "text": "and if you look at Gen Z",
+          "limit": 72
+        },
+        "cw91": {
+          "text": "they don't live",
+          "limit": 45
+        },
+        "cw94": {
+          "text": "to work they work to live",
+          "limit": 75
+        }
+      }
+    },
+    {
+      "id": "block_cw104",
+      "component": "CAPTION",
+      "movable": true,
+      "text": null,
+      "parts": {
+        "cw104": {
+          "text": "flexible",
+          "limit": 40
+        },
+        "cw105": {
+          "text": "time",
+          "limit": 40
+        },
+        "cw109": {
+          "text": "and sense of",
+          "limit": 40
+        }
+      }
+    },
+    {
+      "id": "block_cw113",
+      "component": "CAPTION",
+      "movable": true,
+      "text": null,
+      "parts": {
+        "cw113": {
+          "text": "we have it all",
+          "limit": 42
+        }
+      }
+    },
+    {
+      "id": "block_cw117",
+      "component": "CAPTION",
+      "movable": true,
+      "text": null,
+      "parts": {
+        "cw117": {
+          "text": "new tools",
+          "limit": 40
+        },
+        "cw119": {
+          "text": "new ways to earn",
+          "limit": 48
+        },
+        "cw123": {
+          "text": "whole generation saying",
+          "limit": 69
+        },
+        "cw126": {
+          "text": "work should fund life not take it over",
+          "limit": 114
+        }
+      }
+    },
+    {
+      "id": "block_cw142",
+      "component": "CAPTION",
+      "movable": true,
+      "text": null,
+      "parts": {
+        "cw142": {
+          "text": "feel more ours",
+          "limit": 42
+        },
+        "cw145": {
+          "text": "maybe because we never",
+          "limit": 66
+        },
+        "cw149": {
+          "text": "stepped",
+          "limit": 40
+        },
+        "cw150": {
+          "text": "far away from our routine to actually",
+          "limit": 111
+        },
+        "cw157": {
+          "text": "hear what we really want?",
+          "limit": 75
+        }
+      }
+    },
+    {
+      "id": "transition-1",
+      "component": "LIST",
+      "movable": true,
+      "text": null,
+      "parts": {
+        "lead": {
+          "text": "they want",
+          "limit": 40
+        },
+        "key": {
+          "text": "fair pay",
+          "limit": 40
+        }
+      }
+    },
+    {
+      "id": "transition-2",
+      "component": "LIST",
+      "movable": true,
+      "text": null,
+      "parts": {
+        "lead": {
+          "text": "protected",
+          "limit": 40
+        },
+        "key": {
+          "text": "mental health",
+          "limit": 40
+        }
+      }
+    },
+    {
+      "id": "visual-1",
+      "component": "VISUAL",
+      "movable": true,
+      "text": null,
+      "parts": {}
+    },
+    {
+      "id": "big-word-1",
+      "component": "BIGWORD",
+      "movable": true,
+      "text": {
+        "text": "distribution",
+        "limit": 40
+      },
+      "parts": {}
+    }
+  ]
+}

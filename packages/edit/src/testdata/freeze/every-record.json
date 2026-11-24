@@ -1,0 +1,3795 @@
+[
+  {
+    "item": "transition-1",
+    "component": "LIST",
+    "variant": "list/numbered",
+    "start": 25.824,
+    "end": 27.586,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "list 1 item 1 on \"they want fair pay\" ends at 27.59 s: the next text starts at 27.59 s"
+  },
+  {
+    "item": "transition-2",
+    "component": "LIST",
+    "variant": "list/numbered",
+    "start": 28.051,
+    "end": 29.877,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "list 1 item 2 on \"protected mental health\" ends at 29.88 s: the next text starts at 29.88 s"
+  },
+  {
+    "item": "cw152",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 44.859,
+    "end": 46.268,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"from\" joins the next group, so it shows at least 0.25 s"
+  },
+  {
+    "item": "cw151",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 44.641,
+    "end": 46.268,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"away\" joins the next group, so it shows at least 0.25 s"
+  },
+  {
+    "item": "cw150",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 44.468,
+    "end": 46.268,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"far\" joins the next group, so it shows at least 0.25 s"
+  },
+  {
+    "item": "cw105",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 28.107,
+    "end": 29.877,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"time\" joins the next group, so it shows at least 0.25 s"
+  },
+  {
+    "item": "cw94",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 24.797,
+    "end": 26.124,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"to\" joins the next group, so it shows at least 0.25 s"
+  },
+  {
+    "item": "cw67",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 17.708,
+    "end": 19.304,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"us\" joins the next group, so it shows at least 0.25 s"
+  },
+  {
+    "item": "cw66",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 17.49,
+    "end": 19.304,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"given\" joins the next group, so it shows at least 0.25 s"
+  },
+  {
+    "item": "cw38",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 10.689,
+    "end": 12.08,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"time\" joins the next group, so it shows at least 0.25 s"
+  },
+  {
+    "item": "cw37",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 10.607,
+    "end": 12.08,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"same\" joins the next group, so it shows at least 0.25 s"
+  },
+  {
+    "item": "cw36",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 10.389,
+    "end": 12.08,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"the\" joins the next group, so it shows at least 0.25 s"
+  },
+  {
+    "item": "cw35",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 10.307,
+    "end": 12.08,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"at\" joins the next group, so it shows at least 0.25 s"
+  },
+  {
+    "item": "cw34",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 10.18,
+    "end": 12.08,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"but\" joins the next group, so it shows at least 0.25 s"
+  },
+  {
+    "item": "cw3",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.827,
+    "end": 1.273,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"living\" stays until 1.27 s, at least 0.25 s on screen"
+  },
+  {
+    "item": "cw9",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 2.275,
+    "end": 2.981,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"rethink\" stays until 2.98 s, at least 0.25 s on screen"
+  },
+  {
+    "item": "cw12",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 3.399,
+    "end": 3.926,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"earn\" stays until 3.93 s, at least 0.25 s on screen"
+  },
+  {
+    "item": "cw25",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 7.265,
+    "end": 7.565,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"do\" stays until 7.57 s, at least 0.25 s on screen"
+  },
+  {
+    "item": "cw28",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 7.883,
+    "end": 8.757,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"completely\" stays until 8.76 s, at least 0.25 s on screen"
+  },
+  {
+    "item": "cw33",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 9.789,
+    "end": 10.131,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"work\" stays until 10.13 s, at least 0.25 s on screen"
+  },
+  {
+    "item": "cw44",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 11.634,
+    "end": 12.08,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"chance\" stays until 12.08 s, at least 0.25 s on screen"
+  },
+  {
+    "item": "cw50",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 13.225,
+    "end": 13.802,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"project\" stays until 13.80 s, at least 0.25 s on screen"
+  },
+  {
+    "item": "cw57",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 15.18,
+    "end": 15.648,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"head\" stays until 15.65 s, at least 0.25 s on screen"
+  },
+  {
+    "item": "cw62",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 16.19,
+    "end": 16.572,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"world\" stays until 16.57 s, at least 0.25 s on screen"
+  },
+  {
+    "item": "cw65",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 17.199,
+    "end": 17.449,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"has\" stays until 17.45 s, at least 0.25 s on screen"
+  },
+  {
+    "item": "cw71",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 18.981,
+    "end": 19.304,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"earn\" stays until 19.30 s, at least 0.25 s on screen"
+  },
+  {
+    "item": "cw77",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 20.795,
+    "end": 21.245,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"channel\" stays until 21.25 s, at least 0.25 s on screen"
+  },
+  {
+    "item": "cw80",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 21.513,
+    "end": 22.077,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"project\" stays until 22.08 s, at least 0.25 s on screen"
+  },
+  {
+    "item": "cw83",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 22.422,
+    "end": 22.763,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"idea\" stays until 22.76 s, at least 0.25 s on screen"
+  },
+  {
+    "item": "cw89",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 23.622,
+    "end": 24.095,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"Gen Z\" stays until 24.09 s, at least 0.25 s on screen"
+  },
+  {
+    "item": "cw93",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 24.45,
+    "end": 24.754,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"live\" stays until 24.75 s, at least 0.25 s on screen"
+  },
+  {
+    "item": "cw99",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 25.697,
+    "end": 26.124,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"live\" stays until 26.12 s, at least 0.25 s on screen"
+  },
+  {
+    "item": "cw103",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 27.069,
+    "end": 27.565,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"pay\" stays until 27.57 s, at least 0.25 s on screen"
+  },
+  {
+    "item": "cw104",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 27.586,
+    "end": 28.107,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"flexible\" stays until 28.11 s, at least 0.25 s on screen"
+  },
+  {
+    "item": "cw111",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 30.496,
+    "end": 30.746,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"of\" stays until 30.75 s, at least 0.25 s on screen"
+  },
+  {
+    "item": "cw118",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 32.586,
+    "end": 33.086,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"tools\" stays until 33.09 s, at least 0.25 s on screen"
+  },
+  {
+    "item": "cw122",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 33.786,
+    "end": 34.264,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"earn\" stays until 34.26 s, at least 0.25 s on screen"
+  },
+  {
+    "item": "cw125",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 35.212,
+    "end": 35.841,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"saying\" stays until 35.84 s, at least 0.25 s on screen"
+  },
+  {
+    "item": "cw133",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 37.854,
+    "end": 38.554,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"over\" stays until 38.55 s, at least 0.25 s on screen"
+  },
+  {
+    "item": "cw139",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 39.936,
+    "end": 40.334,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"us\" stays until 40.33 s, at least 0.25 s on screen"
+  },
+  {
+    "item": "cw144",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 41.948,
+    "end": 42.535,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"ours\" stays until 42.53 s, at least 0.25 s on screen"
+  },
+  {
+    "item": "cw148",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 43.378,
+    "end": 43.916,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"never\" stays until 43.92 s, at least 0.25 s on screen"
+  },
+  {
+    "item": "cw149",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 44.067,
+    "end": 44.468,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"stepped\" stays until 44.47 s, at least 0.25 s on screen"
+  },
+  {
+    "item": "cw161",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 47.204,
+    "end": 47.526,
+    "rule": "timing",
+    "outcome": "retimed",
+    "blockers": [],
+    "reason": "caption \"want?\" stays until 47.53 s, at least 0.25 s on screen"
+  },
+  {
+    "item": "hook",
+    "component": "HOOK",
+    "variant": "hook/typed",
+    "start": 0.2,
+    "end": 3,
+    "zone": "anywhere-in-safe-zone",
+    "size": 110,
+    "lines": 2,
+    "cost": 10,
+    "rule": "zone",
+    "outcome": "moved",
+    "blockers": [
+      {
+        "kind": "face"
+      }
+    ],
+    "reason": "hook hook \"Gen Z won't work like you did\" moves in the safe zone from 0.20 s to 3.00 s; the face took the upper third"
+  },
+  {
+    "item": "hook",
+    "component": "HOOK",
+    "variant": "hook/typed",
+    "start": 0.2,
+    "end": 3,
+    "zone": "anywhere-in-safe-zone",
+    "size": 110,
+    "lines": 2,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [
+      {
+        "kind": "face"
+      }
+    ],
+    "reason": "hook hook \"Gen Z won't work like you did\" wraps to 2 lines in the safe zone from 0.20 s to 3.00 s"
+  },
+  {
+    "item": "visual-1",
+    "component": "VISUAL",
+    "variant": "visual/card",
+    "start": 5.206,
+    "end": 7.206,
+    "zone": "corner",
+    "size": 300,
+    "lines": 0,
+    "cost": 20,
+    "rule": "size",
+    "outcome": "shrunk",
+    "blockers": [
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "visual visual-1 shrinks to 300 px from 360 px in a corner from 5.21 s to 7.21 s; the face, the buttons took the room"
+  },
+  {
+    "item": "accent-1",
+    "component": "ACCENT",
+    "variant": "accent/above-head",
+    "start": 8.607,
+    "end": 8.885,
+    "zone": "above-head",
+    "size": 110,
+    "lines": 1,
+    "cost": 0,
+    "rule": "zone",
+    "outcome": "placed",
+    "blockers": [],
+    "reason": "accent accent-1 \"disrupted\" is placed above the head at 110 px from 8.61 s to 8.88 s, nothing given up"
+  },
+  {
+    "item": "big-word-1",
+    "component": "BIGWORD",
+    "variant": "bigword/behind",
+    "start": 19.868,
+    "end": 21.368,
+    "zone": "head-top",
+    "size": 184,
+    "lines": 1,
+    "cost": 0,
+    "rule": "zone",
+    "outcome": "placed",
+    "blockers": [],
+    "reason": "bigword big-word-1 \"distribution\" is placed at the head top at 184 px from 19.87 s to 21.37 s, nothing given up"
+  },
+  {
+    "item": "transition-1",
+    "component": "LIST",
+    "variant": "list/numbered",
+    "start": 25.824,
+    "end": 27.586,
+    "zone": "anywhere-in-safe-zone",
+    "size": 110,
+    "lines": 4,
+    "cost": 10,
+    "rule": "zone",
+    "outcome": "moved",
+    "blockers": [
+      {
+        "kind": "face"
+      }
+    ],
+    "reason": "list transition-1 \"1 / they want / fair pay\" moves in the safe zone from 25.82 s to 27.59 s; the face took the upper third"
+  },
+  {
+    "item": "transition-1",
+    "component": "LIST",
+    "variant": "list/numbered",
+    "start": 25.824,
+    "end": 27.586,
+    "zone": "anywhere-in-safe-zone",
+    "size": 110,
+    "lines": 4,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [
+      {
+        "kind": "face"
+      }
+    ],
+    "reason": "list transition-1 \"1 / they want / fair pay\" wraps its key phrase to 2 lines in the safe zone from 25.82 s to 27.59 s"
+  },
+  {
+    "item": "transition-2",
+    "component": "LIST",
+    "variant": "list/numbered",
+    "start": 28.051,
+    "end": 29.877,
+    "zone": "anywhere-in-safe-zone",
+    "size": 90,
+    "lines": 3,
+    "cost": 30,
+    "rule": "zone",
+    "outcome": "moved",
+    "blockers": [
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "list transition-2 \"2 / protected / mental health\" moves in the safe zone from 28.05 s to 29.88 s; the face, the buttons took the upper third"
+  },
+  {
+    "item": "transition-2",
+    "component": "LIST",
+    "variant": "list/numbered",
+    "start": 28.051,
+    "end": 29.877,
+    "zone": "anywhere-in-safe-zone",
+    "size": 90,
+    "lines": 3,
+    "cost": 30,
+    "rule": "size",
+    "outcome": "shrunk",
+    "blockers": [
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "list transition-2 \"2 / protected / mental health\" shrinks its key phrase to 90 px from 110 px, the other levels with it, in the safe zone from 28.05 s to 29.88 s; the face, the buttons took the room"
+  },
+  {
+    "item": "accent-2",
+    "component": "ACCENT",
+    "variant": "accent/above-head",
+    "start": 30.705,
+    "end": 31.514,
+    "zone": "above-head",
+    "size": 110,
+    "lines": 1,
+    "cost": 0,
+    "rule": "zone",
+    "outcome": "placed",
+    "blockers": [],
+    "reason": "accent accent-2 \"purpose\" is placed above the head at 110 px from 30.70 s to 31.51 s, nothing given up"
+  },
+  {
+    "item": "question-1",
+    "component": "QUESTION",
+    "variant": "question/word-by-word",
+    "start": 38.554,
+    "end": 41.25,
+    "zone": "above-head",
+    "size": 110,
+    "lines": 2,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "question question-1 \"and still for most of us life doesn't?\" wraps to 2 lines above the head from 38.55 s to 41.25 s"
+  },
+  {
+    "item": "cw0",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "shrunk",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" shrinks to 47 px from 50 px beside the face from 0.28 s to 7.57 s; hook, the face, the buttons took the room"
+  },
+  {
+    "item": "cw0",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" wraps to 3 lines beside the face from 0.28 s to 7.57 s"
+  },
+  {
+    "item": "cw1",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "shrunk",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" shrinks to 47 px from 50 px beside the face from 0.28 s to 7.57 s; hook, the face, the buttons took the room"
+  },
+  {
+    "item": "cw1",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" wraps to 3 lines beside the face from 0.28 s to 7.57 s"
+  },
+  {
+    "item": "cw2",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "shrunk",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" shrinks to 47 px from 50 px beside the face from 0.28 s to 7.57 s; hook, the face, the buttons took the room"
+  },
+  {
+    "item": "cw2",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" wraps to 3 lines beside the face from 0.28 s to 7.57 s"
+  },
+  {
+    "item": "cw3",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "shrunk",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" shrinks to 47 px from 50 px beside the face from 0.28 s to 7.57 s; hook, the face, the buttons took the room"
+  },
+  {
+    "item": "cw3",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" wraps to 3 lines beside the face from 0.28 s to 7.57 s"
+  },
+  {
+    "item": "cw4",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "shrunk",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" shrinks to 47 px from 50 px beside the face from 0.28 s to 7.57 s; hook, the face, the buttons took the room"
+  },
+  {
+    "item": "cw4",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" wraps to 3 lines beside the face from 0.28 s to 7.57 s"
+  },
+  {
+    "item": "cw5",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "shrunk",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" shrinks to 47 px from 50 px beside the face from 0.28 s to 7.57 s; hook, the face, the buttons took the room"
+  },
+  {
+    "item": "cw5",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" wraps to 3 lines beside the face from 0.28 s to 7.57 s"
+  },
+  {
+    "item": "cw6",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "shrunk",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" shrinks to 47 px from 50 px beside the face from 0.28 s to 7.57 s; hook, the face, the buttons took the room"
+  },
+  {
+    "item": "cw6",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" wraps to 3 lines beside the face from 0.28 s to 7.57 s"
+  },
+  {
+    "item": "cw7",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "shrunk",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" shrinks to 47 px from 50 px beside the face from 0.28 s to 7.57 s; hook, the face, the buttons took the room"
+  },
+  {
+    "item": "cw7",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" wraps to 3 lines beside the face from 0.28 s to 7.57 s"
+  },
+  {
+    "item": "cw8",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "shrunk",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" shrinks to 47 px from 50 px beside the face from 0.28 s to 7.57 s; hook, the face, the buttons took the room"
+  },
+  {
+    "item": "cw8",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" wraps to 3 lines beside the face from 0.28 s to 7.57 s"
+  },
+  {
+    "item": "cw9",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "shrunk",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" shrinks to 47 px from 50 px beside the face from 0.28 s to 7.57 s; hook, the face, the buttons took the room"
+  },
+  {
+    "item": "cw9",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" wraps to 3 lines beside the face from 0.28 s to 7.57 s"
+  },
+  {
+    "item": "cw10",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "shrunk",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" shrinks to 47 px from 50 px beside the face from 0.28 s to 7.57 s; hook, the face, the buttons took the room"
+  },
+  {
+    "item": "cw10",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" wraps to 3 lines beside the face from 0.28 s to 7.57 s"
+  },
+  {
+    "item": "cw11",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "shrunk",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" shrinks to 47 px from 50 px beside the face from 0.28 s to 7.57 s; hook, the face, the buttons took the room"
+  },
+  {
+    "item": "cw11",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" wraps to 3 lines beside the face from 0.28 s to 7.57 s"
+  },
+  {
+    "item": "cw12",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "shrunk",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" shrinks to 47 px from 50 px beside the face from 0.28 s to 7.57 s; hook, the face, the buttons took the room"
+  },
+  {
+    "item": "cw12",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" wraps to 3 lines beside the face from 0.28 s to 7.57 s"
+  },
+  {
+    "item": "cw13",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "shrunk",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" shrinks to 47 px from 50 px beside the face from 0.28 s to 7.57 s; hook, the face, the buttons took the room"
+  },
+  {
+    "item": "cw13",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" wraps to 3 lines beside the face from 0.28 s to 7.57 s"
+  },
+  {
+    "item": "cw14",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "shrunk",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" shrinks to 47 px from 50 px beside the face from 0.28 s to 7.57 s; hook, the face, the buttons took the room"
+  },
+  {
+    "item": "cw14",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" wraps to 3 lines beside the face from 0.28 s to 7.57 s"
+  },
+  {
+    "item": "cw15",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "shrunk",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" shrinks to 47 px from 50 px beside the face from 0.28 s to 7.57 s; hook, the face, the buttons took the room"
+  },
+  {
+    "item": "cw15",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" wraps to 3 lines beside the face from 0.28 s to 7.57 s"
+  },
+  {
+    "item": "cw16",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "shrunk",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" shrinks to 47 px from 50 px beside the face from 0.28 s to 7.57 s; hook, the face, the buttons took the room"
+  },
+  {
+    "item": "cw16",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" wraps to 3 lines beside the face from 0.28 s to 7.57 s"
+  },
+  {
+    "item": "cw17",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "shrunk",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" shrinks to 47 px from 50 px beside the face from 0.28 s to 7.57 s; hook, the face, the buttons took the room"
+  },
+  {
+    "item": "cw17",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" wraps to 3 lines beside the face from 0.28 s to 7.57 s"
+  },
+  {
+    "item": "cw18",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "shrunk",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" shrinks to 47 px from 50 px beside the face from 0.28 s to 7.57 s; hook, the face, the buttons took the room"
+  },
+  {
+    "item": "cw18",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" wraps to 3 lines beside the face from 0.28 s to 7.57 s"
+  },
+  {
+    "item": "cw19",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "shrunk",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" shrinks to 47 px from 50 px beside the face from 0.28 s to 7.57 s; hook, the face, the buttons took the room"
+  },
+  {
+    "item": "cw19",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" wraps to 3 lines beside the face from 0.28 s to 7.57 s"
+  },
+  {
+    "item": "cw20",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "shrunk",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" shrinks to 47 px from 50 px beside the face from 0.28 s to 7.57 s; hook, the face, the buttons took the room"
+  },
+  {
+    "item": "cw20",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" wraps to 3 lines beside the face from 0.28 s to 7.57 s"
+  },
+  {
+    "item": "cw21",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "shrunk",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" shrinks to 47 px from 50 px beside the face from 0.28 s to 7.57 s; hook, the face, the buttons took the room"
+  },
+  {
+    "item": "cw21",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" wraps to 3 lines beside the face from 0.28 s to 7.57 s"
+  },
+  {
+    "item": "cw22",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "shrunk",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" shrinks to 47 px from 50 px beside the face from 0.28 s to 7.57 s; hook, the face, the buttons took the room"
+  },
+  {
+    "item": "cw22",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" wraps to 3 lines beside the face from 0.28 s to 7.57 s"
+  },
+  {
+    "item": "cw23",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "shrunk",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" shrinks to 47 px from 50 px beside the face from 0.28 s to 7.57 s; hook, the face, the buttons took the room"
+  },
+  {
+    "item": "cw23",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" wraps to 3 lines beside the face from 0.28 s to 7.57 s"
+  },
+  {
+    "item": "cw24",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "shrunk",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" shrinks to 47 px from 50 px beside the face from 0.28 s to 7.57 s; hook, the face, the buttons took the room"
+  },
+  {
+    "item": "cw24",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" wraps to 3 lines beside the face from 0.28 s to 7.57 s"
+  },
+  {
+    "item": "cw25",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "shrunk",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" shrinks to 47 px from 50 px beside the face from 0.28 s to 7.57 s; hook, the face, the buttons took the room"
+  },
+  {
+    "item": "cw25",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 0.282,
+    "end": 7.565,
+    "zone": "beside-face",
+    "size": 47,
+    "lines": 3,
+    "cost": 10,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [
+      {
+        "kind": "item",
+        "id": "hook"
+      },
+      {
+        "kind": "face"
+      },
+      {
+        "kind": "buttons"
+      }
+    ],
+    "reason": "caption block cw0 \"the time we're living right now push us to rethink how we earn how we spend our time how we allocate our resources what we do\" wraps to 3 lines beside the face from 0.28 s to 7.57 s"
+  },
+  {
+    "item": "cw26",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 7.565,
+    "end": 16.572,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 5,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw26 \"AI has completely the way we work but at the same time it has given us a chance to start a business a project put those things out of my head give it to the world\" wraps to 5 lines beside the face from 7.57 s to 16.57 s"
+  },
+  {
+    "item": "cw27",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 7.565,
+    "end": 16.572,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 5,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw26 \"AI has completely the way we work but at the same time it has given us a chance to start a business a project put those things out of my head give it to the world\" wraps to 5 lines beside the face from 7.57 s to 16.57 s"
+  },
+  {
+    "item": "cw28",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 7.565,
+    "end": 16.572,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 5,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw26 \"AI has completely the way we work but at the same time it has given us a chance to start a business a project put those things out of my head give it to the world\" wraps to 5 lines beside the face from 7.57 s to 16.57 s"
+  },
+  {
+    "item": "cw30",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 7.565,
+    "end": 16.572,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 5,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw26 \"AI has completely the way we work but at the same time it has given us a chance to start a business a project put those things out of my head give it to the world\" wraps to 5 lines beside the face from 7.57 s to 16.57 s"
+  },
+  {
+    "item": "cw31",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 7.565,
+    "end": 16.572,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 5,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw26 \"AI has completely the way we work but at the same time it has given us a chance to start a business a project put those things out of my head give it to the world\" wraps to 5 lines beside the face from 7.57 s to 16.57 s"
+  },
+  {
+    "item": "cw32",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 7.565,
+    "end": 16.572,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 5,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw26 \"AI has completely the way we work but at the same time it has given us a chance to start a business a project put those things out of my head give it to the world\" wraps to 5 lines beside the face from 7.57 s to 16.57 s"
+  },
+  {
+    "item": "cw33",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 7.565,
+    "end": 16.572,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 5,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw26 \"AI has completely the way we work but at the same time it has given us a chance to start a business a project put those things out of my head give it to the world\" wraps to 5 lines beside the face from 7.57 s to 16.57 s"
+  },
+  {
+    "item": "cw34",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 7.565,
+    "end": 16.572,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 5,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw26 \"AI has completely the way we work but at the same time it has given us a chance to start a business a project put those things out of my head give it to the world\" wraps to 5 lines beside the face from 7.57 s to 16.57 s"
+  },
+  {
+    "item": "cw35",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 7.565,
+    "end": 16.572,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 5,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw26 \"AI has completely the way we work but at the same time it has given us a chance to start a business a project put those things out of my head give it to the world\" wraps to 5 lines beside the face from 7.57 s to 16.57 s"
+  },
+  {
+    "item": "cw36",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 7.565,
+    "end": 16.572,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 5,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw26 \"AI has completely the way we work but at the same time it has given us a chance to start a business a project put those things out of my head give it to the world\" wraps to 5 lines beside the face from 7.57 s to 16.57 s"
+  },
+  {
+    "item": "cw37",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 7.565,
+    "end": 16.572,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 5,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw26 \"AI has completely the way we work but at the same time it has given us a chance to start a business a project put those things out of my head give it to the world\" wraps to 5 lines beside the face from 7.57 s to 16.57 s"
+  },
+  {
+    "item": "cw38",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 7.565,
+    "end": 16.572,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 5,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw26 \"AI has completely the way we work but at the same time it has given us a chance to start a business a project put those things out of my head give it to the world\" wraps to 5 lines beside the face from 7.57 s to 16.57 s"
+  },
+  {
+    "item": "cw39",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 7.565,
+    "end": 16.572,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 5,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw26 \"AI has completely the way we work but at the same time it has given us a chance to start a business a project put those things out of my head give it to the world\" wraps to 5 lines beside the face from 7.57 s to 16.57 s"
+  },
+  {
+    "item": "cw40",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 7.565,
+    "end": 16.572,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 5,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw26 \"AI has completely the way we work but at the same time it has given us a chance to start a business a project put those things out of my head give it to the world\" wraps to 5 lines beside the face from 7.57 s to 16.57 s"
+  },
+  {
+    "item": "cw41",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 7.565,
+    "end": 16.572,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 5,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw26 \"AI has completely the way we work but at the same time it has given us a chance to start a business a project put those things out of my head give it to the world\" wraps to 5 lines beside the face from 7.57 s to 16.57 s"
+  },
+  {
+    "item": "cw42",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 7.565,
+    "end": 16.572,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 5,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw26 \"AI has completely the way we work but at the same time it has given us a chance to start a business a project put those things out of my head give it to the world\" wraps to 5 lines beside the face from 7.57 s to 16.57 s"
+  },
+  {
+    "item": "cw43",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 7.565,
+    "end": 16.572,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 5,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw26 \"AI has completely the way we work but at the same time it has given us a chance to start a business a project put those things out of my head give it to the world\" wraps to 5 lines beside the face from 7.57 s to 16.57 s"
+  },
+  {
+    "item": "cw44",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 7.565,
+    "end": 16.572,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 5,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw26 \"AI has completely the way we work but at the same time it has given us a chance to start a business a project put those things out of my head give it to the world\" wraps to 5 lines beside the face from 7.57 s to 16.57 s"
+  },
+  {
+    "item": "cw45",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 7.565,
+    "end": 16.572,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 5,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw26 \"AI has completely the way we work but at the same time it has given us a chance to start a business a project put those things out of my head give it to the world\" wraps to 5 lines beside the face from 7.57 s to 16.57 s"
+  },
+  {
+    "item": "cw46",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 7.565,
+    "end": 16.572,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 5,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw26 \"AI has completely the way we work but at the same time it has given us a chance to start a business a project put those things out of my head give it to the world\" wraps to 5 lines beside the face from 7.57 s to 16.57 s"
+  },
+  {
+    "item": "cw47",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 7.565,
+    "end": 16.572,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 5,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw26 \"AI has completely the way we work but at the same time it has given us a chance to start a business a project put those things out of my head give it to the world\" wraps to 5 lines beside the face from 7.57 s to 16.57 s"
+  },
+  {
+    "item": "cw48",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 7.565,
+    "end": 16.572,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 5,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw26 \"AI has completely the way we work but at the same time it has given us a chance to start a business a project put those things out of my head give it to the world\" wraps to 5 lines beside the face from 7.57 s to 16.57 s"
+  },
+  {
+    "item": "cw49",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 7.565,
+    "end": 16.572,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 5,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw26 \"AI has completely the way we work but at the same time it has given us a chance to start a business a project put those things out of my head give it to the world\" wraps to 5 lines beside the face from 7.57 s to 16.57 s"
+  },
+  {
+    "item": "cw50",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 7.565,
+    "end": 16.572,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 5,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw26 \"AI has completely the way we work but at the same time it has given us a chance to start a business a project put those things out of my head give it to the world\" wraps to 5 lines beside the face from 7.57 s to 16.57 s"
+  },
+  {
+    "item": "cw51",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 7.565,
+    "end": 16.572,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 5,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw26 \"AI has completely the way we work but at the same time it has given us a chance to start a business a project put those things out of my head give it to the world\" wraps to 5 lines beside the face from 7.57 s to 16.57 s"
+  },
+  {
+    "item": "cw52",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 7.565,
+    "end": 16.572,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 5,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw26 \"AI has completely the way we work but at the same time it has given us a chance to start a business a project put those things out of my head give it to the world\" wraps to 5 lines beside the face from 7.57 s to 16.57 s"
+  },
+  {
+    "item": "cw53",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 7.565,
+    "end": 16.572,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 5,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw26 \"AI has completely the way we work but at the same time it has given us a chance to start a business a project put those things out of my head give it to the world\" wraps to 5 lines beside the face from 7.57 s to 16.57 s"
+  },
+  {
+    "item": "cw54",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 7.565,
+    "end": 16.572,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 5,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw26 \"AI has completely the way we work but at the same time it has given us a chance to start a business a project put those things out of my head give it to the world\" wraps to 5 lines beside the face from 7.57 s to 16.57 s"
+  },
+  {
+    "item": "cw55",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 7.565,
+    "end": 16.572,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 5,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw26 \"AI has completely the way we work but at the same time it has given us a chance to start a business a project put those things out of my head give it to the world\" wraps to 5 lines beside the face from 7.57 s to 16.57 s"
+  },
+  {
+    "item": "cw56",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 7.565,
+    "end": 16.572,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 5,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw26 \"AI has completely the way we work but at the same time it has given us a chance to start a business a project put those things out of my head give it to the world\" wraps to 5 lines beside the face from 7.57 s to 16.57 s"
+  },
+  {
+    "item": "cw57",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 7.565,
+    "end": 16.572,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 5,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw26 \"AI has completely the way we work but at the same time it has given us a chance to start a business a project put those things out of my head give it to the world\" wraps to 5 lines beside the face from 7.57 s to 16.57 s"
+  },
+  {
+    "item": "cw58",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 7.565,
+    "end": 16.572,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 5,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw26 \"AI has completely the way we work but at the same time it has given us a chance to start a business a project put those things out of my head give it to the world\" wraps to 5 lines beside the face from 7.57 s to 16.57 s"
+  },
+  {
+    "item": "cw59",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 7.565,
+    "end": 16.572,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 5,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw26 \"AI has completely the way we work but at the same time it has given us a chance to start a business a project put those things out of my head give it to the world\" wraps to 5 lines beside the face from 7.57 s to 16.57 s"
+  },
+  {
+    "item": "cw60",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 7.565,
+    "end": 16.572,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 5,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw26 \"AI has completely the way we work but at the same time it has given us a chance to start a business a project put those things out of my head give it to the world\" wraps to 5 lines beside the face from 7.57 s to 16.57 s"
+  },
+  {
+    "item": "cw61",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 7.565,
+    "end": 16.572,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 5,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw26 \"AI has completely the way we work but at the same time it has given us a chance to start a business a project put those things out of my head give it to the world\" wraps to 5 lines beside the face from 7.57 s to 16.57 s"
+  },
+  {
+    "item": "cw62",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 7.565,
+    "end": 16.572,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 5,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw26 \"AI has completely the way we work but at the same time it has given us a chance to start a business a project put those things out of my head give it to the world\" wraps to 5 lines beside the face from 7.57 s to 16.57 s"
+  },
+  {
+    "item": "cw63",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 16.572,
+    "end": 22.763,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw63 \"social media has given us alternative ways to earn and is an excellent channel for your project for your idea\" wraps to 4 lines beside the face from 16.57 s to 22.76 s"
+  },
+  {
+    "item": "cw64",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 16.572,
+    "end": 22.763,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw63 \"social media has given us alternative ways to earn and is an excellent channel for your project for your idea\" wraps to 4 lines beside the face from 16.57 s to 22.76 s"
+  },
+  {
+    "item": "cw65",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 16.572,
+    "end": 22.763,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw63 \"social media has given us alternative ways to earn and is an excellent channel for your project for your idea\" wraps to 4 lines beside the face from 16.57 s to 22.76 s"
+  },
+  {
+    "item": "cw66",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 16.572,
+    "end": 22.763,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw63 \"social media has given us alternative ways to earn and is an excellent channel for your project for your idea\" wraps to 4 lines beside the face from 16.57 s to 22.76 s"
+  },
+  {
+    "item": "cw67",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 16.572,
+    "end": 22.763,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw63 \"social media has given us alternative ways to earn and is an excellent channel for your project for your idea\" wraps to 4 lines beside the face from 16.57 s to 22.76 s"
+  },
+  {
+    "item": "cw68",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 16.572,
+    "end": 22.763,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw63 \"social media has given us alternative ways to earn and is an excellent channel for your project for your idea\" wraps to 4 lines beside the face from 16.57 s to 22.76 s"
+  },
+  {
+    "item": "cw69",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 16.572,
+    "end": 22.763,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw63 \"social media has given us alternative ways to earn and is an excellent channel for your project for your idea\" wraps to 4 lines beside the face from 16.57 s to 22.76 s"
+  },
+  {
+    "item": "cw70",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 16.572,
+    "end": 22.763,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw63 \"social media has given us alternative ways to earn and is an excellent channel for your project for your idea\" wraps to 4 lines beside the face from 16.57 s to 22.76 s"
+  },
+  {
+    "item": "cw71",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 16.572,
+    "end": 22.763,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw63 \"social media has given us alternative ways to earn and is an excellent channel for your project for your idea\" wraps to 4 lines beside the face from 16.57 s to 22.76 s"
+  },
+  {
+    "item": "cw72",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 16.572,
+    "end": 22.763,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw63 \"social media has given us alternative ways to earn and is an excellent channel for your project for your idea\" wraps to 4 lines beside the face from 16.57 s to 22.76 s"
+  },
+  {
+    "item": "cw73",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 16.572,
+    "end": 22.763,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw63 \"social media has given us alternative ways to earn and is an excellent channel for your project for your idea\" wraps to 4 lines beside the face from 16.57 s to 22.76 s"
+  },
+  {
+    "item": "cw74",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 16.572,
+    "end": 22.763,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw63 \"social media has given us alternative ways to earn and is an excellent channel for your project for your idea\" wraps to 4 lines beside the face from 16.57 s to 22.76 s"
+  },
+  {
+    "item": "cw75",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 16.572,
+    "end": 22.763,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw63 \"social media has given us alternative ways to earn and is an excellent channel for your project for your idea\" wraps to 4 lines beside the face from 16.57 s to 22.76 s"
+  },
+  {
+    "item": "cw77",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 16.572,
+    "end": 22.763,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw63 \"social media has given us alternative ways to earn and is an excellent channel for your project for your idea\" wraps to 4 lines beside the face from 16.57 s to 22.76 s"
+  },
+  {
+    "item": "cw78",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 16.572,
+    "end": 22.763,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw63 \"social media has given us alternative ways to earn and is an excellent channel for your project for your idea\" wraps to 4 lines beside the face from 16.57 s to 22.76 s"
+  },
+  {
+    "item": "cw79",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 16.572,
+    "end": 22.763,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw63 \"social media has given us alternative ways to earn and is an excellent channel for your project for your idea\" wraps to 4 lines beside the face from 16.57 s to 22.76 s"
+  },
+  {
+    "item": "cw80",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 16.572,
+    "end": 22.763,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw63 \"social media has given us alternative ways to earn and is an excellent channel for your project for your idea\" wraps to 4 lines beside the face from 16.57 s to 22.76 s"
+  },
+  {
+    "item": "cw81",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 16.572,
+    "end": 22.763,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw63 \"social media has given us alternative ways to earn and is an excellent channel for your project for your idea\" wraps to 4 lines beside the face from 16.57 s to 22.76 s"
+  },
+  {
+    "item": "cw82",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 16.572,
+    "end": 22.763,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw63 \"social media has given us alternative ways to earn and is an excellent channel for your project for your idea\" wraps to 4 lines beside the face from 16.57 s to 22.76 s"
+  },
+  {
+    "item": "cw83",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 16.572,
+    "end": 22.763,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw63 \"social media has given us alternative ways to earn and is an excellent channel for your project for your idea\" wraps to 4 lines beside the face from 16.57 s to 22.76 s"
+  },
+  {
+    "item": "cw84",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 22.804,
+    "end": 26.124,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw84 \"and if you look at Gen Z they don't live to work they work to live\" wraps to 4 lines beside the face from 22.80 s to 26.12 s"
+  },
+  {
+    "item": "cw85",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 22.804,
+    "end": 26.124,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw84 \"and if you look at Gen Z they don't live to work they work to live\" wraps to 4 lines beside the face from 22.80 s to 26.12 s"
+  },
+  {
+    "item": "cw86",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 22.804,
+    "end": 26.124,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw84 \"and if you look at Gen Z they don't live to work they work to live\" wraps to 4 lines beside the face from 22.80 s to 26.12 s"
+  },
+  {
+    "item": "cw87",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 22.804,
+    "end": 26.124,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw84 \"and if you look at Gen Z they don't live to work they work to live\" wraps to 4 lines beside the face from 22.80 s to 26.12 s"
+  },
+  {
+    "item": "cw88",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 22.804,
+    "end": 26.124,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw84 \"and if you look at Gen Z they don't live to work they work to live\" wraps to 4 lines beside the face from 22.80 s to 26.12 s"
+  },
+  {
+    "item": "cw89",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 22.804,
+    "end": 26.124,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw84 \"and if you look at Gen Z they don't live to work they work to live\" wraps to 4 lines beside the face from 22.80 s to 26.12 s"
+  },
+  {
+    "item": "cw91",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 22.804,
+    "end": 26.124,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw84 \"and if you look at Gen Z they don't live to work they work to live\" wraps to 4 lines beside the face from 22.80 s to 26.12 s"
+  },
+  {
+    "item": "cw92",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 22.804,
+    "end": 26.124,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw84 \"and if you look at Gen Z they don't live to work they work to live\" wraps to 4 lines beside the face from 22.80 s to 26.12 s"
+  },
+  {
+    "item": "cw93",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 22.804,
+    "end": 26.124,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw84 \"and if you look at Gen Z they don't live to work they work to live\" wraps to 4 lines beside the face from 22.80 s to 26.12 s"
+  },
+  {
+    "item": "cw94",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 22.804,
+    "end": 26.124,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw84 \"and if you look at Gen Z they don't live to work they work to live\" wraps to 4 lines beside the face from 22.80 s to 26.12 s"
+  },
+  {
+    "item": "cw95",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 22.804,
+    "end": 26.124,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw84 \"and if you look at Gen Z they don't live to work they work to live\" wraps to 4 lines beside the face from 22.80 s to 26.12 s"
+  },
+  {
+    "item": "cw96",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 22.804,
+    "end": 26.124,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw84 \"and if you look at Gen Z they don't live to work they work to live\" wraps to 4 lines beside the face from 22.80 s to 26.12 s"
+  },
+  {
+    "item": "cw97",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 22.804,
+    "end": 26.124,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw84 \"and if you look at Gen Z they don't live to work they work to live\" wraps to 4 lines beside the face from 22.80 s to 26.12 s"
+  },
+  {
+    "item": "cw98",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 22.804,
+    "end": 26.124,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw84 \"and if you look at Gen Z they don't live to work they work to live\" wraps to 4 lines beside the face from 22.80 s to 26.12 s"
+  },
+  {
+    "item": "cw99",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 22.804,
+    "end": 26.124,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw84 \"and if you look at Gen Z they don't live to work they work to live\" wraps to 4 lines beside the face from 22.80 s to 26.12 s"
+  },
+  {
+    "item": "cw104",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 27.586,
+    "end": 30.746,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 2,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw104 \"flexible time and sense of\" wraps to 2 lines beside the face from 27.59 s to 30.75 s"
+  },
+  {
+    "item": "cw105",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 27.586,
+    "end": 30.746,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 2,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw104 \"flexible time and sense of\" wraps to 2 lines beside the face from 27.59 s to 30.75 s"
+  },
+  {
+    "item": "cw109",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 27.586,
+    "end": 30.746,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 2,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw104 \"flexible time and sense of\" wraps to 2 lines beside the face from 27.59 s to 30.75 s"
+  },
+  {
+    "item": "cw110",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 27.586,
+    "end": 30.746,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 2,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw104 \"flexible time and sense of\" wraps to 2 lines beside the face from 27.59 s to 30.75 s"
+  },
+  {
+    "item": "cw111",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 27.586,
+    "end": 30.746,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 2,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw104 \"flexible time and sense of\" wraps to 2 lines beside the face from 27.59 s to 30.75 s"
+  },
+  {
+    "item": "cw113",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 31.586,
+    "end": 32.405,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 1,
+    "cost": 0,
+    "rule": "zone",
+    "outcome": "placed",
+    "blockers": [],
+    "reason": "caption block cw113 \"we have it all\" is placed beside the face at 50 px from 31.59 s to 32.41 s, nothing given up"
+  },
+  {
+    "item": "cw114",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 31.586,
+    "end": 32.405,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 1,
+    "cost": 0,
+    "rule": "zone",
+    "outcome": "placed",
+    "blockers": [],
+    "reason": "caption block cw113 \"we have it all\" is placed beside the face at 50 px from 31.59 s to 32.41 s, nothing given up"
+  },
+  {
+    "item": "cw115",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 31.586,
+    "end": 32.405,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 1,
+    "cost": 0,
+    "rule": "zone",
+    "outcome": "placed",
+    "blockers": [],
+    "reason": "caption block cw113 \"we have it all\" is placed beside the face at 50 px from 31.59 s to 32.41 s, nothing given up"
+  },
+  {
+    "item": "cw116",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 31.586,
+    "end": 32.405,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 1,
+    "cost": 0,
+    "rule": "zone",
+    "outcome": "placed",
+    "blockers": [],
+    "reason": "caption block cw113 \"we have it all\" is placed beside the face at 50 px from 31.59 s to 32.41 s, nothing given up"
+  },
+  {
+    "item": "cw117",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 32.405,
+    "end": 38.554,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 3,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw117 \"new tools new ways to earn whole generation saying work should fund life not take it over\" wraps to 3 lines beside the face from 32.41 s to 38.55 s"
+  },
+  {
+    "item": "cw118",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 32.405,
+    "end": 38.554,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 3,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw117 \"new tools new ways to earn whole generation saying work should fund life not take it over\" wraps to 3 lines beside the face from 32.41 s to 38.55 s"
+  },
+  {
+    "item": "cw119",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 32.405,
+    "end": 38.554,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 3,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw117 \"new tools new ways to earn whole generation saying work should fund life not take it over\" wraps to 3 lines beside the face from 32.41 s to 38.55 s"
+  },
+  {
+    "item": "cw120",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 32.405,
+    "end": 38.554,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 3,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw117 \"new tools new ways to earn whole generation saying work should fund life not take it over\" wraps to 3 lines beside the face from 32.41 s to 38.55 s"
+  },
+  {
+    "item": "cw121",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 32.405,
+    "end": 38.554,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 3,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw117 \"new tools new ways to earn whole generation saying work should fund life not take it over\" wraps to 3 lines beside the face from 32.41 s to 38.55 s"
+  },
+  {
+    "item": "cw122",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 32.405,
+    "end": 38.554,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 3,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw117 \"new tools new ways to earn whole generation saying work should fund life not take it over\" wraps to 3 lines beside the face from 32.41 s to 38.55 s"
+  },
+  {
+    "item": "cw123",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 32.405,
+    "end": 38.554,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 3,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw117 \"new tools new ways to earn whole generation saying work should fund life not take it over\" wraps to 3 lines beside the face from 32.41 s to 38.55 s"
+  },
+  {
+    "item": "cw124",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 32.405,
+    "end": 38.554,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 3,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw117 \"new tools new ways to earn whole generation saying work should fund life not take it over\" wraps to 3 lines beside the face from 32.41 s to 38.55 s"
+  },
+  {
+    "item": "cw125",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 32.405,
+    "end": 38.554,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 3,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw117 \"new tools new ways to earn whole generation saying work should fund life not take it over\" wraps to 3 lines beside the face from 32.41 s to 38.55 s"
+  },
+  {
+    "item": "cw126",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 32.405,
+    "end": 38.554,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 3,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw117 \"new tools new ways to earn whole generation saying work should fund life not take it over\" wraps to 3 lines beside the face from 32.41 s to 38.55 s"
+  },
+  {
+    "item": "cw127",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 32.405,
+    "end": 38.554,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 3,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw117 \"new tools new ways to earn whole generation saying work should fund life not take it over\" wraps to 3 lines beside the face from 32.41 s to 38.55 s"
+  },
+  {
+    "item": "cw128",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 32.405,
+    "end": 38.554,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 3,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw117 \"new tools new ways to earn whole generation saying work should fund life not take it over\" wraps to 3 lines beside the face from 32.41 s to 38.55 s"
+  },
+  {
+    "item": "cw129",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 32.405,
+    "end": 38.554,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 3,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw117 \"new tools new ways to earn whole generation saying work should fund life not take it over\" wraps to 3 lines beside the face from 32.41 s to 38.55 s"
+  },
+  {
+    "item": "cw130",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 32.405,
+    "end": 38.554,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 3,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw117 \"new tools new ways to earn whole generation saying work should fund life not take it over\" wraps to 3 lines beside the face from 32.41 s to 38.55 s"
+  },
+  {
+    "item": "cw131",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 32.405,
+    "end": 38.554,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 3,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw117 \"new tools new ways to earn whole generation saying work should fund life not take it over\" wraps to 3 lines beside the face from 32.41 s to 38.55 s"
+  },
+  {
+    "item": "cw132",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 32.405,
+    "end": 38.554,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 3,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw117 \"new tools new ways to earn whole generation saying work should fund life not take it over\" wraps to 3 lines beside the face from 32.41 s to 38.55 s"
+  },
+  {
+    "item": "cw133",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 32.405,
+    "end": 38.554,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 3,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw117 \"new tools new ways to earn whole generation saying work should fund life not take it over\" wraps to 3 lines beside the face from 32.41 s to 38.55 s"
+  },
+  {
+    "item": "cw142",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 41.25,
+    "end": 47.526,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw142 \"feel more ours maybe because we never stepped far away from our routine to actually hear what we really want?\" wraps to 4 lines beside the face from 41.25 s to 47.53 s"
+  },
+  {
+    "item": "cw143",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 41.25,
+    "end": 47.526,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw142 \"feel more ours maybe because we never stepped far away from our routine to actually hear what we really want?\" wraps to 4 lines beside the face from 41.25 s to 47.53 s"
+  },
+  {
+    "item": "cw144",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 41.25,
+    "end": 47.526,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw142 \"feel more ours maybe because we never stepped far away from our routine to actually hear what we really want?\" wraps to 4 lines beside the face from 41.25 s to 47.53 s"
+  },
+  {
+    "item": "cw145",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 41.25,
+    "end": 47.526,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw142 \"feel more ours maybe because we never stepped far away from our routine to actually hear what we really want?\" wraps to 4 lines beside the face from 41.25 s to 47.53 s"
+  },
+  {
+    "item": "cw146",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 41.25,
+    "end": 47.526,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw142 \"feel more ours maybe because we never stepped far away from our routine to actually hear what we really want?\" wraps to 4 lines beside the face from 41.25 s to 47.53 s"
+  },
+  {
+    "item": "cw147",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 41.25,
+    "end": 47.526,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw142 \"feel more ours maybe because we never stepped far away from our routine to actually hear what we really want?\" wraps to 4 lines beside the face from 41.25 s to 47.53 s"
+  },
+  {
+    "item": "cw148",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 41.25,
+    "end": 47.526,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw142 \"feel more ours maybe because we never stepped far away from our routine to actually hear what we really want?\" wraps to 4 lines beside the face from 41.25 s to 47.53 s"
+  },
+  {
+    "item": "cw149",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 41.25,
+    "end": 47.526,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw142 \"feel more ours maybe because we never stepped far away from our routine to actually hear what we really want?\" wraps to 4 lines beside the face from 41.25 s to 47.53 s"
+  },
+  {
+    "item": "cw150",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 41.25,
+    "end": 47.526,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw142 \"feel more ours maybe because we never stepped far away from our routine to actually hear what we really want?\" wraps to 4 lines beside the face from 41.25 s to 47.53 s"
+  },
+  {
+    "item": "cw151",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 41.25,
+    "end": 47.526,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw142 \"feel more ours maybe because we never stepped far away from our routine to actually hear what we really want?\" wraps to 4 lines beside the face from 41.25 s to 47.53 s"
+  },
+  {
+    "item": "cw152",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 41.25,
+    "end": 47.526,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw142 \"feel more ours maybe because we never stepped far away from our routine to actually hear what we really want?\" wraps to 4 lines beside the face from 41.25 s to 47.53 s"
+  },
+  {
+    "item": "cw153",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 41.25,
+    "end": 47.526,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw142 \"feel more ours maybe because we never stepped far away from our routine to actually hear what we really want?\" wraps to 4 lines beside the face from 41.25 s to 47.53 s"
+  },
+  {
+    "item": "cw154",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 41.25,
+    "end": 47.526,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw142 \"feel more ours maybe because we never stepped far away from our routine to actually hear what we really want?\" wraps to 4 lines beside the face from 41.25 s to 47.53 s"
+  },
+  {
+    "item": "cw155",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 41.25,
+    "end": 47.526,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw142 \"feel more ours maybe because we never stepped far away from our routine to actually hear what we really want?\" wraps to 4 lines beside the face from 41.25 s to 47.53 s"
+  },
+  {
+    "item": "cw156",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 41.25,
+    "end": 47.526,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw142 \"feel more ours maybe because we never stepped far away from our routine to actually hear what we really want?\" wraps to 4 lines beside the face from 41.25 s to 47.53 s"
+  },
+  {
+    "item": "cw157",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 41.25,
+    "end": 47.526,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw142 \"feel more ours maybe because we never stepped far away from our routine to actually hear what we really want?\" wraps to 4 lines beside the face from 41.25 s to 47.53 s"
+  },
+  {
+    "item": "cw158",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 41.25,
+    "end": 47.526,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw142 \"feel more ours maybe because we never stepped far away from our routine to actually hear what we really want?\" wraps to 4 lines beside the face from 41.25 s to 47.53 s"
+  },
+  {
+    "item": "cw159",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 41.25,
+    "end": 47.526,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw142 \"feel more ours maybe because we never stepped far away from our routine to actually hear what we really want?\" wraps to 4 lines beside the face from 41.25 s to 47.53 s"
+  },
+  {
+    "item": "cw160",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 41.25,
+    "end": 47.526,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw142 \"feel more ours maybe because we never stepped far away from our routine to actually hear what we really want?\" wraps to 4 lines beside the face from 41.25 s to 47.53 s"
+  },
+  {
+    "item": "cw161",
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "start": 41.25,
+    "end": 47.526,
+    "zone": "beside-face",
+    "size": 50,
+    "lines": 4,
+    "cost": 0,
+    "rule": "size",
+    "outcome": "wrapped",
+    "blockers": [],
+    "reason": "caption block cw142 \"feel more ours maybe because we never stepped far away from our routine to actually hear what we really want?\" wraps to 4 lines beside the face from 41.25 s to 47.53 s"
+  }
+]

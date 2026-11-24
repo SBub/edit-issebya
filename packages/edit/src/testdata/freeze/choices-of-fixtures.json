@@ -1,0 +1,165 @@
+{
+  "baseline-short-speech": {
+    "accents": [],
+    "questions": [],
+    "big_words": [],
+    "visuals": [],
+    "lists": [],
+    "word_fixes": [],
+    "hook": null
+  },
+  "baseline-short-speech-hook": {
+    "accents": [],
+    "questions": [],
+    "big_words": [],
+    "visuals": [],
+    "lists": [],
+    "word_fixes": [],
+    "hook": {
+      "text": "A short test for the real studio"
+    }
+  },
+  "rethink-work-engine": {
+    "accents": [
+      {
+        "from": "w29",
+        "to": "w29"
+      },
+      {
+        "from": "w112",
+        "to": "w112"
+      }
+    ],
+    "questions": [],
+    "big_words": [
+      {
+        "from": "w76",
+        "to": "w76"
+      }
+    ],
+    "visuals": [
+      {
+        "from": "w18",
+        "to": "w24"
+      }
+    ],
+    "lists": [],
+    "word_fixes": [
+      {
+        "word": "w89",
+        "text": "Gen Z"
+      },
+      {
+        "word": "w161",
+        "text": "want?"
+      }
+    ],
+    "hook": null
+  },
+  "rethink-work-request": {
+    "accents": [],
+    "questions": [],
+    "big_words": [],
+    "visuals": [
+      {
+        "from": "w84",
+        "to": "w94",
+        "description": "a question mark on a wall"
+      }
+    ],
+    "lists": [],
+    "word_fixes": [],
+    "hook": null
+  },
+  "rethink-work-transitions": {
+    "accents": [
+      {
+        "from": "w29",
+        "to": "w29"
+      },
+      {
+        "from": "w112",
+        "to": "w112"
+      }
+    ],
+    "questions": [],
+    "big_words": [
+      {
+        "from": "w76",
+        "to": "w76"
+      }
+    ],
+    "visuals": [
+      {
+        "from": "w18",
+        "to": "w24"
+      }
+    ],
+    "lists": [
+      {
+        "items": [
+          {
+            "from": "w100",
+            "to": "w103",
+            "key_from": "w102"
+          },
+          {
+            "from": "w106",
+            "to": "w108",
+            "key_from": "w107"
+          }
+        ]
+      }
+    ],
+    "word_fixes": [
+      {
+        "word": "w89",
+        "text": "Gen Z"
+      },
+      {
+        "word": "w161",
+        "text": "want?"
+      }
+    ],
+    "hook": null
+  },
+  "rethink-work-hook": {
+    "accents": [
+      {
+        "from": "w29",
+        "to": "w29"
+      },
+      {
+        "from": "w112",
+        "to": "w112"
+      }
+    ],
+    "questions": [],
+    "big_words": [
+      {
+        "from": "w76",
+        "to": "w76"
+      }
+    ],
+    "visuals": [
+      {
+        "from": "w18",
+        "to": "w24"
+      }
+    ],
+    "lists": [],
+    "word_fixes": [
+      {
+        "word": "w89",
+        "text": "Gen Z"
+      },
+      {
+        "word": "w161",
+        "text": "want?"
+      }
+    ],
+    "hook": {
+      "text": "Gen Z won't work like you did"
+    }
+  }
+}

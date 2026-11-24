@@ -1,0 +1,29 @@
+{
+  "role": "hook",
+  "promptVersion": "reel-hook@v1",
+  "promptRef": {
+    "name": "reel-hook",
+    "version": 1,
+    "label": "production"
+  },
+  "fetched": [
+    "reel-components",
+    "reel-hook"
+  ],
+  "schema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "text": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 45,
+        "pattern": "^[^\\n\\r<>]+$"
+      }
+    },
+    "required": [
+      "text"
+    ],
+    "additionalProperties": false
+  }
+}
