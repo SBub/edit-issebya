@@ -128,9 +128,3 @@ export function roleAi(reply: (request: AiRequest) => AiResult): AiRunner & { ca
     },
   };
 }
-
-// The picks the judge was sent: the last fenced JSON block of its prompt.
-export function sentPicksOf(request: AiRequest): { pick: string; words: string }[] {
-  const block = request.prompt.split("```json\n").at(-1)!.split("\n```")[0]!;
-  return JSON.parse(block) as { pick: string; words: string }[];
-}

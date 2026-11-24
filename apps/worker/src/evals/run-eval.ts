@@ -19,7 +19,7 @@ import {
   sentPick,
   wordsOf,
 } from "./label.ts";
-import { type OwnerItem, selectOwnerItems } from "./owner-marks.ts";
+import { type OwnerItem, isJudged, selectOwnerItems } from "./owner-marks.ts";
 import { differingRunsOf, missingSnapshot, pastRunsOf } from "./snapshot-format.ts";
 import { type DraftPrompt, draftId } from "./draft-prompt.ts";
 import type { EvalsApi, UploadBody } from "./posthog-evals.ts";
@@ -156,12 +156,14 @@ function prepare(item: OwnerItem, runs: readonly CuratorRun[], differing: number
     }
   }
   const calls: PreparedCall[] = [];
+  // The owner's marks the judge knows (not the visuals).
+  const judgedMarks = item.marks.filter(isJudged);
   // The reel's script: the first run's transcript, the words the owner marked.
   const [first] = runs;
-  if (first && item.marks.length > 0) {
+  if (first && judgedMarks.length > 0) {
     const picks = judgePicks(
       "owner",
-      item.marks,
+      judgedMarks,
       () => OWNER_LABEL,
       `${SEED}/${item.reelId}/owner`,
     );
@@ -195,7 +197,7 @@ function prepare(item: OwnerItem, runs: readonly CuratorRun[], differing: number
       curatorRuns: runs.length,
       differingRuns: differing,
       ownerCalls: calls.filter((call) => call.source === "owner").length,
-      ownerMarks: item.marks.length,
+      ownerMarks: judgedMarks.length,
       curatorPicks: good + bad,
       good,
       bad,

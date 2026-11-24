@@ -57,9 +57,12 @@ export interface PromptCall {
 // missing, the key not set). Transient: the step fails and may be retried, and
 // no AI call has been made yet.
 export class PromptUnavailable extends TransientError {
-  constructor(name: string, label: string, reason: string) {
+  // `not-found` when PostHog answered 404: the prompt, or its label, does not exist.
+  readonly code: "not-found" | undefined;
+  constructor(name: string, label: string, reason: string, code?: "not-found") {
     super(`prompts: ${name} (label ${label}) could not be fetched: ${reason}`);
     this.name = "PromptUnavailable";
+    this.code = code;
   }
 }
 

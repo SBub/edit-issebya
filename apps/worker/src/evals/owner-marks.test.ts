@@ -29,13 +29,14 @@ describe("spanOfMark", () => {
 });
 
 describe("parseOwnerItem", () => {
-  it("reads the scored components into word spans and leaves the visuals and the hook out", () => {
+  it("reads the scored components into word spans, the visuals included, and leaves the hook out", () => {
     const item = parseOwnerItem(
       ownerItemJson(TEXT, {
         accent: [{ start: 1, end: 3.5, words: "work to live" }],
         bigword: [{ start: 10, end: 10.5, words: "day" }],
         question: [{ start: 5, end: 8.5, words: "we live to work" }],
         nothing: [{ start: 9, end: 10.5, words: "every day" }],
+        visual: [{ start: 0, end: 1.5, words: "we work" }],
         list: [
           {
             level: "phrases",
@@ -61,6 +62,7 @@ describe("parseOwnerItem", () => {
       { component: "accent", span: { from: 1, to: 3 } },
       { component: "bigword", span: { from: 10, to: 10 } },
       { component: "question", span: { from: 5, to: 8 } },
+      { component: "visual", span: { from: 0, to: 1 } },
       {
         component: "list",
         span: { from: 1, to: 8 },

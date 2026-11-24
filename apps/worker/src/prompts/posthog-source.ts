@@ -95,7 +95,8 @@ export function posthogPromptSource(
   const copies = new Map<string, Copy>();
   return {
     async get(name) {
-      const fail = (reason: string) => new PromptUnavailable(name, label, reason);
+      const fail = (reason: string, code?: "not-found") =>
+        new PromptUnavailable(name, label, reason, code);
       if (!personalApiKey) throw fail("POSTHOG_PERSONAL_API_KEY is not set");
       if (!projectId) throw fail("POSTHOG_PROJECT_ID is not set");
       if (!host) throw fail("POSTHOG_HOST is not set");
@@ -119,9 +120,9 @@ export function posthogPromptSource(
       };
 
       // Anything else fails at once and drops the copy.
-      const refuse = (reason: string): never => {
+      const refuse = (reason: string, code?: "not-found"): never => {
         copies.delete(name);
-        throw fail(reason);
+        throw fail(reason, code);
       };
 
       let reply: { ok: boolean; status: number; text: string };
@@ -135,7 +136,7 @@ export function posthogPromptSource(
       }
       if (!reply.ok) {
         if (reply.status === 404) {
-          return refuse(`prompt "${name}" label "${label}" not found`);
+          return refuse(`prompt "${name}" label "${label}" not found`, "not-found");
         }
         if (reply.status === 403) {
           return refuse(

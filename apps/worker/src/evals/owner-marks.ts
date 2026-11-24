@@ -5,9 +5,16 @@ import { z } from "zod";
 // a curator pick (word ids) and an owner mark (seconds and words) compare by
 // the words they cover.
 
-// The components the eval scores. VISUAL and the hook are not scored yet.
-export const COMPONENTS = ["accent", "bigword", "list", "question"] as const;
+// The components the eval scores, by code. The hook is not one: it has its own
+// LLM call. A SECTION joins here when the curator's answer has one.
+export const COMPONENTS = ["accent", "bigword", "list", "question", "visual"] as const;
 export type Component = (typeof COMPONENTS)[number];
+
+// The judge never sees a visual: the judge prompt knows the other four.
+export const JUDGED_COMPONENTS = COMPONENTS.filter((component) => component !== "visual");
+export function isJudged(pick: { component: Component }): boolean {
+  return pick.component !== "visual";
+}
 
 // Words `from` to `to` of the transcript, both included (indexes, not ids).
 export interface Span {
@@ -74,6 +81,7 @@ const itemSchema = z.object({
     accent: z.array(markSchema).default([]),
     bigword: z.array(markSchema).default([]),
     question: z.array(markSchema).default([]),
+    visual: z.array(markSchema).default([]),
     list: z.array(listSchema).default([]),
     nothing: z.array(markSchema).default([]),
   }),
@@ -138,7 +146,7 @@ export function parseOwnerItem(json: unknown): OwnerItem {
   };
   const expected = item.expected_output;
   const marks: OwnerMark[] = [];
-  for (const component of ["accent", "bigword", "question"] as const) {
+  for (const component of ["accent", "bigword", "question", "visual"] as const) {
     for (const mark of expected[component]) marks.push({ component, span: span(mark, component) });
   }
   for (const list of expected.list) {

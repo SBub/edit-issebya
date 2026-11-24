@@ -1,115 +1,8 @@
-import { InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace";
 import { describe, expect, it } from "vitest";
-import { ownerItemJson } from "../../test-support/eval-fixtures.ts";
-import { snapshotItems } from "../../test-support/snapshot-fixtures.ts";
+import { answerResult, fixtureSources, roleAi } from "../../test-support/curator-fixtures.ts";
+import { OPTIONS, setup } from "../../test-support/curator-run-setup.ts";
 import { fakePromptSource } from "../../test-support/fake-prompts.ts";
-import {
-  ANSWER,
-  OWNER,
-  TEXT,
-  answerResult,
-  fixtureSources,
-  noMeasurer,
-  parseEditStub,
-  roleAi,
-  sentPicksOf,
-} from "../../test-support/curator-fixtures.ts";
-import type { AiRequest, AiResult } from "../ai.ts";
-import { createTelemetry } from "../telemetry.ts";
-import { draftId } from "./draft-prompt.ts";
-import type { EvalsApi, ExperimentBody, UploadBody } from "./posthog-evals.ts";
-import { type CuratorEvalDeps, type CuratorEvalOptions, runCuratorEval } from "./run-curator.ts";
-import type { CuratorSources } from "./curator-input.ts";
-
-// The answer the curator gives: the owner's accent and big word.
-const CURATOR_ANSWER = { ...ANSWER, lists: [] };
-
-// The curator answers `CURATOR_ANSWER`; the judge approves every pick it is sent.
-function reply(request: AiRequest): AiResult {
-  if (request.role === "judge") {
-    return answerResult({
-      verdicts: sentPicksOf(request).map((pick) => ({
-        pick: pick.pick,
-        verdict: "approve",
-        reason: `about ${pick.words}`,
-        better: null,
-      })),
-    });
-  }
-  return answerResult(CURATOR_ANSWER);
-}
-
-// The dataset as the refresh step leaves it for the reels `sources` holds.
-const RAW_ITEMS = [ownerItemJson(TEXT, OWNER)];
-const DATASET = { revisionId: "revision-6", revision: 6 };
-
-function setup({
-  ai = roleAi(reply),
-  sources = fixtureSources(),
-  overrides = {},
-}: {
-  ai?: ReturnType<typeof roleAi>;
-  sources?: CuratorSources;
-  overrides?: Partial<EvalsApi>;
-} = {}) {
-  const posthogCalls: string[] = [];
-  const sent: { experiment?: ExperimentBody; upload?: UploadBody } = {};
-  const posthog: EvalsApi = {
-    async dataset() {
-      posthogCalls.push("dataset");
-      return {
-        ...DATASET,
-        items: await snapshotItems(RAW_ITEMS, sources, { parseCurrent: parseEditStub }),
-      };
-    },
-    async updateItem() {
-      throw new Error("the curator eval writes no dataset item");
-    },
-    async scorerVersion(name) {
-      posthogCalls.push(`scorer ${name}`);
-      return `${name}-version`;
-    },
-    async createExperiment(body) {
-      posthogCalls.push("create");
-      sent.experiment = body;
-    },
-    async upload(id, body) {
-      posthogCalls.push(`upload ${id}`);
-      sent.upload = body;
-    },
-    async complete(id) {
-      posthogCalls.push(`complete ${id}`);
-    },
-    async fail(id) {
-      posthogCalls.push(`fail ${id}`);
-    },
-    ...overrides,
-  };
-  const exporter = new InMemorySpanExporter();
-  const lines: string[] = [];
-  const reports: string[] = [];
-  let ids = 0;
-  const deps: CuratorEvalDeps = {
-    posthog,
-    curatorPrompts: fakePromptSource(),
-    judgePrompts: fakePromptSource(),
-    ai,
-    telemetry: createTelemetry({}, { spanProcessors: [new SimpleSpanProcessor({ exporter })] }),
-    measurerOf: noMeasurer,
-    parseCurrent: parseEditStub,
-    validatorOf: () => () => ({ ok: true }),
-    async saveReport(name, html) {
-      reports.push(html);
-      return `/out/${name}`;
-    },
-    log: (line) => lines.push(line),
-    now: () => new Date("2026-11-12T10:00:00.000Z"),
-    newId: () => `00000000-0000-4000-8000-00000000000${(ids += 1)}`,
-  };
-  return { deps, posthogCalls, sent, ai, lines, reports };
-}
-
-const OPTIONS: CuratorEvalOptions = { datasetId: "data-set", dryRun: false, repeats: 1 };
+import { SCORING_VERSION, runCuratorEval } from "./run-curator.ts";
 
 describe("a dry run", () => {
   it("prints the inputs and makes no AI call, no experiment and no upload", async () => {
@@ -134,110 +27,92 @@ describe("a dry run", () => {
 });
 
 describe("a run", () => {
-  it("asks the curator and the judge once each per run, and uploads both scorers per reel", async () => {
+  it("asks the curator once per run, no judge, and uploads a scorer per column per reel", async () => {
     const { deps, posthogCalls, sent, ai } = setup();
     const summary = await runCuratorEval({ ...OPTIONS, repeats: 2 }, deps);
 
-    expect(ai.calls.map((call) => call.role)).toEqual(["decide", "judge", "decide", "judge"]);
+    expect(ai.calls.map((call) => call.role)).toEqual(["decide", "decide"]);
     expect(posthogCalls).toEqual([
       "dataset",
-      "scorer curator_f1",
-      "scorer judge_approval",
+      "scorer curator_f1_overall",
+      "scorer curator_f1_accent",
+      "scorer curator_f1_bigword",
+      "scorer curator_f1_list",
+      "scorer curator_f1_question",
+      "scorer curator_f1_visual",
       "create",
       "upload 00000000-0000-4000-8000-000000000001",
       "complete 00000000-0000-4000-8000-000000000001",
     ]);
-    expect(summary.curatorF1).toBe(1);
-    expect(summary.judgeApproval).toBe(1);
+    expect(summary.datasetRevision).toBe(6);
+    expect(summary.summary?.f1.overall).toEqual({ mean: 1, min: 1, max: 1 });
+    expect(summary.summary?.runs).toEqual({ ok: 2, total: 2 });
 
     expect(sent.experiment).toMatchObject({
       suite_key: "components-curator",
       dataset_revision_id: "revision-6",
       prompt_version: "reel-components@v1",
-      application_version: "judge reel-components-judge@v1",
+      application_version: SCORING_VERSION,
       expected_item_count: 1,
-      expected_result_count: 2,
+      expected_result_count: 6,
     });
     const results = sent.upload!.results;
     expect(
       results.map((result) => [result.scorer_version_id, result.status, result.value]),
     ).toEqual([
-      ["curator_f1-version", "ok", 1],
-      ["judge_approval-version", "ok", 1],
+      ["curator_f1_overall-version", "ok", 1],
+      ["curator_f1_accent-version", "ok", 1],
+      ["curator_f1_bigword-version", "ok", 1],
+      ["curator_f1_list-version", "skipped", undefined],
+      ["curator_f1_question-version", "skipped", undefined],
+      ["curator_f1_visual-version", "ok", 1],
     ]);
     const item = sent.upload!.items[0]!;
     expect(item.payload.metadata).toMatchObject({
       curator_prompt_version: "reel-components@v1",
-      judge_prompt_version: "reel-components-judge@v1",
+      curator_prompt_label: "production",
       curator_model: expect.any(String),
-      judge_model: expect.any(String),
+      scoring: SCORING_VERSION,
       repeats: 2,
       curator_runs_ok: 2,
     });
+    expect(item.payload.metadata).not.toHaveProperty("judge_model");
     expect(item.payload.expected_output).toEqual({
       marks: [
         { component: "accent", words: "work to live" },
         { component: "bigword", words: "day" },
+        { component: "visual", words: "we" },
       ],
     });
-    const runs = (
-      item.payload.output as { runs: { picks: { verdict: string; label: string }[] }[] }
-    ).runs;
+    const runs = (item.payload.output as { runs: { picks: { label: string }[] }[] }).runs;
     expect(runs).toHaveLength(2);
-    expect(runs[0]!.picks.map((pick) => [pick.label, pick.verdict])).toEqual([
-      ["good", "approve"],
-      ["good", "approve"],
-    ]);
+    expect(runs[0]!.picks.map((pick) => pick.label)).toEqual(["good", "good", "good"]);
   });
 
-  it("records a draft curator prompt by its hash and file, and sends its text", async () => {
-    const text = "a draft curator, {{script}} {{hook}}";
-    const { deps, sent, ai } = setup();
-    await runCuratorEval(
-      {
-        ...OPTIONS,
-        curatorDraft: { text, file: "curator-draft.txt", id: draftId(text) },
-      },
-      deps,
-    );
-    const curatorCall = ai.calls.find((call) => call.role === "decide")!;
-    expect(curatorCall.promptVersion).toBe("draft@v0");
-    expect(curatorCall.prompt.startsWith("a draft curator,")).toBe(true);
-    expect(sent.experiment!.prompt_version).toBe(draftId(text));
-    expect(sent.experiment!.name).toContain("curator-draft.txt");
+  it("records the prompt version and label it ran, a labelled draft included", async () => {
+    const { deps, sent } = setup();
+    await runCuratorEval(OPTIONS, { ...deps, curatorPrompts: fakePromptSource("draft", 7) });
+    expect(sent.experiment!.prompt_version).toBe("reel-components@v7");
+    expect(sent.experiment!.name).toContain("reel-components@v7 (draft)");
     expect(sent.upload!.items[0]!.payload.metadata).toMatchObject({
-      curator_prompt_version: draftId(text),
+      curator_prompt_version: "reel-components@v7",
       curator_prompt_label: "draft",
-      curator_prompt_file: "curator-draft.txt",
-      judge_prompt_version: "reel-components-judge@v1",
     });
-    // A draft with placeholders is still one filled message.
-    expect(curatorCall).not.toHaveProperty("system");
   });
 
-  it("sends a draft with no placeholder as the system message, the inputs as the user message, for the curator and the judge", async () => {
-    const curator = "a draft curator with no placeholder";
-    const judge = "a draft judge with no placeholder";
+  it("sends a prompt with no placeholder as the system message, the inputs as the user message", async () => {
+    const text = "a curator with no placeholder";
     const { deps, ai } = setup();
-    await runCuratorEval(
-      {
-        ...OPTIONS,
-        curatorDraft: { text: curator, file: "curator-system.txt", id: draftId(curator) },
-        judgeDraft: { text: judge, file: "judge-system.txt", id: draftId(judge) },
-      },
-      deps,
-    );
-    const curatorCall = ai.calls.find((call) => call.role === "decide")!;
-    expect(curatorCall.system).toBe(curator);
-    expect(curatorCall.prompt.startsWith("## script\n\n```json\n")).toBe(true);
+    await runCuratorEval(OPTIONS, {
+      ...deps,
+      curatorPrompts: { get: async (name) => ({ name, version: 3, label: "draft", text }) },
+    });
+    const call = ai.calls.find((one) => one.role === "decide")!;
+    expect(call.system).toBe(text);
+    expect(call.prompt.startsWith("## script\n\n```json\n")).toBe(true);
     for (const heading of ["hook", "intensity", "target_picks"]) {
-      expect(curatorCall.prompt).toContain(`\n## ${heading}\n\n`);
+      expect(call.prompt).toContain(`\n## ${heading}\n\n`);
     }
-    expect(curatorCall.promptRef).toMatchObject({ draftId: draftId(curator) });
-    const judgeCall = ai.calls.find((call) => call.role === "judge")!;
-    expect(judgeCall.system).toBe(judge);
-    expect(judgeCall.prompt).toContain("\n## picks\n\n```json\n");
-    expect(judgeCall.promptRef).toMatchObject({ draftId: draftId(judge) });
   });
 
   it("names the eval run as the trace of every call's generation event, with its reel", async () => {
@@ -249,30 +124,19 @@ describe("a run", () => {
       expect(typeof call.observe?.reelId).toBe("string");
       sources.add(call.observe?.properties?.source);
     }
-    expect(sources).toEqual(new Set(["eval:curator", "eval:curator-judge"]));
+    expect(sources).toEqual(new Set(["eval:curator"]));
   });
 
-  it("marks the curator's result an error when it gives no valid answer twice, and makes no judge call", async () => {
+  it("marks the curator's results an error when it gives no valid answer twice", async () => {
     const { deps, sent, ai } = setup({
       ai: roleAi(() => answerResult({ accents: "nope" })),
     });
     await runCuratorEval(OPTIONS, deps);
     expect(ai.calls.map((call) => call.role)).toEqual(["decide", "decide"]);
-    const [f1, approval] = sent.upload!.results;
-    expect(f1).toMatchObject({ status: "error", error_code: "curator_answer_invalid" });
-    expect(approval).toMatchObject({ status: "skipped" });
+    const results = sent.upload!.results;
+    expect(results.map((result) => result.status)).toEqual(Array(6).fill("error"));
+    expect(results[0]).toMatchObject({ status: "error", error_code: "curator_answer_invalid" });
     expect(sent.upload!.items[0]!.payload.metadata).toMatchObject({ curator_runs_failed: 1 });
-  });
-
-  it("marks the judge's result an error when the judge gives no valid answer", async () => {
-    const { deps, sent } = setup({
-      ai: roleAi((request) =>
-        request.role === "judge" ? answerResult({ verdicts: [] }) : answerResult(CURATOR_ANSWER),
-      ),
-    });
-    await runCuratorEval(OPTIONS, deps);
-    const [, approval] = sent.upload!.results;
-    expect(approval).toMatchObject({ status: "error", error_code: "judge_answer_invalid" });
   });
 
   it("fails the experiment, not the run, when the upload is refused", async () => {

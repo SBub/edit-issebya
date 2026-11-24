@@ -1,4 +1,4 @@
-// `yarn workspace @edit-issebya/worker eval <command> [options]`, where command is judge, curator or snapshot: the
+// `yarn workspace @edit-issebya/worker eval <command> [options]`, where command is judge, curator, compare or snapshot: the
 // one way to run the evals (app_docs/evals.md). Every command first refreshes the
 // stale snapshots of the owner's labelled reels (`evals/refresh.ts`), the only
 // eval step that reads the app's database and storage; then the eval reads the
@@ -17,7 +17,7 @@ import { type EvalCommand, EVAL_USAGE, runEvalCommand } from "./evals/command.ts
 import { readDraftPrompt } from "./evals/draft-prompt.ts";
 import { posthogEvals } from "./evals/posthog-evals.ts";
 import { refreshDataset, refreshedPosthog } from "./evals/refresh.ts";
-import { runCuratorEval } from "./evals/run-curator.ts";
+import { runCuratorCompare } from "./evals/run-compare.ts";
 import { runJudgeEval } from "./evals/run-eval.ts";
 import { workerCuratorSources } from "./evals/worker-sources.ts";
 import { createTelemetry } from "./telemetry.ts";
@@ -59,9 +59,9 @@ async function draftOf(path: string | undefined) {
   });
 }
 
-// `<name>` from PostHog at its label: the judge and the curator each have a label.
-function envAt(label: string | undefined): NodeJS.ProcessEnv {
-  return { ...process.env, POSTHOG_PROMPT_LABEL: label ?? DEFAULT_LABEL };
+// The environment of a prompt source that serves the prompts at a label.
+function envAt(label: string): NodeJS.ProcessEnv {
+  return { ...process.env, POSTHOG_PROMPT_LABEL: label };
 }
 
 async function judge(command: Extract<EvalCommand, { kind: "judge" }>): Promise<void> {
@@ -99,32 +99,33 @@ async function judge(command: Extract<EvalCommand, { kind: "judge" }>): Promise<
   }
 }
 
-async function curator(command: Extract<EvalCommand, { kind: "curator" }>): Promise<void> {
+// The curator at each label in turn (one table for all): `curator` runs one,
+// `compare` the production prompt and then the label under test.
+async function curatorAt(
+  labels: string[],
+  command: { dryRun: boolean; reel?: string; repeats: number },
+): Promise<void> {
   const telemetry = createTelemetry();
-  // Every curator and judge call is one PostHog generation event (app_docs/measurement.md).
+  // Every curator call is one PostHog generation event (app_docs/measurement.md).
   const aiObserver = createAiObserver("eval");
   try {
-    const curatorDraft = await draftOf(command.curatorPromptFile);
-    const judgeDraft = await draftOf(command.judgePromptFile);
     const { posthog, sources } = wiring();
     const refreshed = await refreshedPosthog(
       posthog,
       { datasetId: OWNER_REELS_DATASET, dryRun: command.dryRun, reel: command.reel },
       { sources },
     );
-    await runCuratorEval(
+    await runCuratorCompare(
       {
         datasetId: OWNER_REELS_DATASET,
         dryRun: command.dryRun,
         reel: command.reel,
         repeats: command.repeats,
-        ...(curatorDraft ? { curatorDraft } : {}),
-        ...(judgeDraft ? { judgeDraft } : {}),
+        labels,
       },
       {
         posthog: refreshed,
-        curatorPrompts: posthogPromptSource(envAt(command.curatorLabel)),
-        judgePrompts: posthogPromptSource(envAt(command.judgeLabel)),
+        promptsAt: (label) => posthogPromptSource(envAt(label)),
         ai: aiRunner(process.env, aiObserver),
         telemetry,
         measurerOf: (pair) => editMeasurer(pair),
@@ -136,6 +137,11 @@ async function curator(command: Extract<EvalCommand, { kind: "curator" }>): Prom
     await aiObserver.shutdown();
   }
 }
+
+const curator = (command: Extract<EvalCommand, { kind: "curator" }>) =>
+  curatorAt([command.label], command);
+const compare = (command: Extract<EvalCommand, { kind: "compare" }>) =>
+  curatorAt([DEFAULT_LABEL, command.label], command);
 
 async function snapshot(command: Extract<EvalCommand, { kind: "snapshot" }>): Promise<void> {
   const { posthog, sources } = wiring();
@@ -150,6 +156,7 @@ try {
     help: () => console.log(EVAL_USAGE),
     judge,
     curator,
+    compare,
     snapshot,
   });
 } catch (error) {

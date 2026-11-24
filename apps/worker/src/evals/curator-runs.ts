@@ -1,6 +1,6 @@
 import { type Transcript, bigWordSpan, transcriptSchema } from "@edit-issebya/edit";
 import { answerJson, type TracedAnswer } from "../decision-trace.ts";
-import type { ComponentPick, EvalWord, Span } from "./owner-marks.ts";
+import { type ComponentPick, type EvalWord, type Span, isJudged } from "./owner-marks.ts";
 
 // THE CURATOR'S PAST RUNS: every decide answer already stored for a reel (the
 // version's AI record, `<version id>.ai.json`), read back into picks. The eval
@@ -16,7 +16,7 @@ export interface CuratorAnswer {
 
 // The picks of one stored AI record: the last readable `decide` answer's
 // accents, questions, big words and lists, as word-index spans. The hook and
-// the visuals are not picks here. Null when the record holds no decide answer.
+// the visuals are not picks here (the judge does not know them). Null when the record holds no decide answer.
 export function curatorAnswer(record: unknown, transcript: Transcript): CuratorAnswer | null {
   const fields = (record ?? {}) as { prompt_version?: unknown; calls?: unknown };
   if (!Array.isArray(fields.calls)) return null;
@@ -28,13 +28,22 @@ export function curatorAnswer(record: unknown, transcript: Transcript): CuratorA
   if (!answer) return null;
   return {
     promptVersion: typeof fields.prompt_version === "string" ? fields.prompt_version : "unknown",
-    ...picksOfAnswer(answer, transcript),
+    ...judgedPicksOf(answer, transcript),
   };
 }
 
+// The picks the judge eval reads: a stored run's picks without its visuals.
+function judgedPicksOf(
+  answer: TracedAnswer,
+  transcript: Transcript,
+): { picks: ComponentPick[]; unreadable: number } {
+  const { picks, unreadable } = picksOfAnswer(answer, transcript);
+  return { picks: picks.filter(isJudged), unreadable };
+}
+
 // The picks of one decide answer (its ids read against the transcript): the
-// accents, questions, big words and lists. Anything that does not read is left
-// out and counted.
+// accents, questions, big words, lists and visuals. Anything that does not read
+// is left out and counted.
 export function picksOfAnswer(
   answer: TracedAnswer,
   transcript: Transcript,
@@ -47,7 +56,7 @@ export function picksOfAnswer(
     return from === undefined || to === undefined || to < from ? null : { from, to };
   };
   const picks: ComponentPick[] = [];
-  const plain = (component: "accent" | "question" | "bigword", list: unknown) => {
+  const plain = (component: "accent" | "question" | "bigword" | "visual", list: unknown) => {
     for (const phrase of Array.isArray(list) ? list : []) {
       const span = spanOf(component === "bigword" ? bigWordSpan(phrase) : phrase);
       if (span) picks.push({ component, span });
@@ -57,6 +66,7 @@ export function picksOfAnswer(
   plain("accent", answer.accents);
   plain("question", answer.questions);
   plain("bigword", answer.big_words);
+  plain("visual", answer.visuals);
   for (const list of Array.isArray(answer.lists) ? answer.lists : []) {
     const items = (Array.isArray(list?.items) ? list.items : []).map(spanOf);
     if (items.length === 0 || items.some((item) => item === null)) {

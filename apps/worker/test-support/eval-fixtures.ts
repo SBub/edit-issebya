@@ -25,6 +25,7 @@ export function ownerItemJson(
     accent?: Mark[];
     bigword?: Mark[];
     question?: Mark[];
+    visual?: Mark[];
     nothing?: Mark[];
     list?: { level?: string; start: number; end: number; items: Mark[] }[];
   },

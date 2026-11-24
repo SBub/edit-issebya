@@ -117,6 +117,13 @@ describe("the PostHog prompt source", () => {
     expect(error.message).toBe(
       'prompts: reel-hook (label production) could not be fetched: prompt "reel-hook" label "production" not found',
     );
+    expect(error).toMatchObject({ code: "not-found" });
+  });
+
+  it("gives no not-found code to a 403", async () => {
+    answers(json({ detail: "Forbidden." }, 403));
+    const error = await failureOf(posthogPromptSource(ENV).get("reel-hook"));
+    expect(error).toMatchObject({ code: undefined });
   });
 
   it("fails as unavailable, never naming the key, when the key may not read the prompts (403)", async () => {
