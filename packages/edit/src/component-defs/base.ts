@@ -1,3 +1,12 @@
+import type {
+  AnswerContext,
+  AnswerField,
+  Pick,
+  Placed,
+  Problem,
+  ReadBackContext,
+  Say,
+} from "./answer.ts";
 import type { ComponentName } from "./names.ts";
 import type { Variant } from "../variants.ts";
 
@@ -43,5 +52,60 @@ export abstract class Component {
     const { kind, idPrefix } = this.stored;
     if (kind !== null && item.kind !== kind) return false;
     return idPrefix === null || item.id.startsWith(idPrefix);
+  }
+
+  // The curator's part of this component in the answer: the field the AI fills and its schema.
+  // None when the curator does not pick it (the hook has its own call; captions come from the
+  // transcript).
+  readonly answer: AnswerField | null = null;
+
+  // Extra rules beyond the schema, for the picks of this component in an answer (none when it has
+  // no `answer`). Each problem names the pick and says why. The plain rule: a phrase does not end
+  // before it starts.
+  validate(items: readonly unknown[], ctx: AnswerContext): Problem[] {
+    const field = this.answer?.field ?? this.name;
+    const problems: Problem[] = [];
+    (items as { from: string; to: string }[]).forEach((item, index) => {
+      if (ctx.order.get(item.to)! < ctx.order.get(item.from)!) {
+        problems.push({
+          path: [field, index, "to"],
+          message: `ends on ${item.to}, before it starts on ${item.from}`,
+        });
+      }
+    });
+    return problems;
+  }
+
+  // This component's picks of an answer, each with its place in it and the id the engine places it
+  // under. The answer may be an older one that lacks the field.
+  picks(answer: object): Pick[] {
+    const shape = this.answer;
+    if (!shape) return [];
+    const items = (answer as Record<string, unknown>)[shape.field];
+    if (!Array.isArray(items)) return [];
+    return (items as { from: string; to: string; description?: string }[]).map((item, index) => ({
+      ref: `${shape.field}[${index}]`,
+      item: `${shape.itemId}-${index + 1}`,
+      from: item.from,
+      to: item.to,
+      ...(item.description === undefined ? {} : { description: item.description }),
+    }));
+  }
+
+  // The opposite of `picks`: this component's stored items of a version (the ones it owns, in
+  // order) read back as its picks of the answer, each by the words under it. An item no word is
+  // spoken under is left out.
+  readBack(items: readonly Placed[], ctx: ReadBackContext): unknown[] {
+    const out: unknown[] = [];
+    for (const item of items) {
+      const ids = "words" in item && item.words ? item.words : ctx.under(item);
+      if (ids.length > 0) out.push(ctx.ends(ids));
+    }
+    return out;
+  }
+
+  // One line for the decision trace: what the curator proposed, in words.
+  trace(pick: Pick, say: Say): string {
+    return `${this.name.toLowerCase()} "${say(pick.from, pick.to)}"`;
   }
 }

@@ -1,5 +1,6 @@
-import { type Preset, cleanWord, wordsText } from "./preset.ts";
-import { QUESTION_PREFIX } from "./question.ts";
+import type { AnswerField, Placed, ReadBackContext } from "./component-defs/answer.ts";
+import { COMPONENTS, COMPONENT_LIST } from "./component-defs/index.ts";
+import { type Preset, wordsText } from "./preset.ts";
 import type { Anchor, Edit } from "./schema.ts";
 import { resolveTimeline } from "./timeline.ts";
 import type { Transcript } from "./transcript.ts";
@@ -77,16 +78,29 @@ export interface HookChoice {
   text: string;
 }
 
-export interface EngineInput {
-  accents: AccentChoice[];
-  // May be empty: no question in the reel.
-  questions: QuestionChoice[];
-  big_words: BigWordChoice[];
-  visuals: VisualChoice[];
-  lists: ListChoice[];
+// The answer's lists, one field per component that has an `answer` (`component-defs/`): its
+// field name and the type of its picks come from the class.
+type AnswerFields<R> = {
+  [
+    K in keyof R as R[K] extends { answer: AnswerField<infer F, unknown> } ? F : never
+  ]: R[K] extends { answer: AnswerField<string, infer Item> } ? Item[] : never;
+};
+
+export type EngineInput = AnswerFields<typeof COMPONENTS> & {
   word_fixes: WordFix[];
   // None (null or left out): no hook.
   hook?: HookChoice | null;
+};
+
+// An answer with no pick: every list empty, no hook. The lists come from the components, in the
+// order of `COMPONENTS`, then `word_fixes`.
+export function emptyAnswer(): Omit<EngineInput, "hook"> {
+  const answer: Record<string, unknown[]> = {};
+  for (const component of COMPONENT_LIST) {
+    if (component.answer) answer[component.answer.field] = component.answer.empty();
+  }
+  answer.word_fixes = [];
+  return answer as Omit<EngineInput, "hook">;
 }
 
 // The ids from `from` to `to`, in transcript order.
@@ -116,63 +130,17 @@ export function choicesOf(edit: Edit, transcript: Transcript, preset: Preset): E
     return from === undefined || to === undefined ? [] : range(from, to, transcript);
   };
   const ends = (ids: readonly string[]) => ({ from: ids[0]!, to: ids.at(-1)! });
+  const context: ReadBackContext = { transcript, preset, under, ends };
 
-  const accents: AccentChoice[] = [];
-  const questions: QuestionChoice[] = [];
-  let hook: HookChoice | null = null;
-  for (const overlay of edit.tracks.overlays) {
-    if (overlay.kind === "hook") {
-      if (overlay.text) hook = { text: overlay.text };
-      continue;
-    }
-    const ids = overlay.words ?? under(overlay);
-    if (ids.length === 0) continue;
-    // A QUESTION is an accent overlay with a `question-` id.
-    if (overlay.id.startsWith(QUESTION_PREFIX)) questions.push(ends(ids));
-    else accents.push(ends(ids));
-  }
-  const lists: ListChoice[] = [];
-  const listOf = new Map<number, ListChoice>();
-  for (const transition of edit.tracks.transitions) {
-    const item: TransitionChoice = {
-      ...ends(transition.words),
-      key_from: transition.key ?? transition.words[0]!,
-    };
-    if (transition.list === undefined) {
-      lists.push({ items: [item] });
-      continue;
-    }
-    let list = listOf.get(transition.list);
-    if (!list) {
-      list = { items: [] };
-      listOf.set(transition.list, list);
-      lists.push(list);
-    }
-    list.items.push(item);
-  }
-  const visuals: VisualChoice[] = [];
-  const bigWords: BigWordChoice[] = [];
-  const byId = new Map(transcript.words.map((word) => [word.id, word]));
-  for (const item of edit.tracks.behind ?? []) {
-    const ids = under(item);
-    if (ids.length === 0) continue;
-    if (item.kind === "visual") {
-      const { description } = item;
-      visuals.push({ ...ends(ids), ...(description ? { description } : {}) });
-    } else if (item.kind === "word") {
-      // The stored text is one or two words joined by a space; the span starts
-      // on the first word that reads as its first part, else on the first word.
-      const parts = item.text.toLowerCase().split(" ");
-      const readsAs = (index: number, part: string) =>
-        cleanWord(byId.get(ids[index]!)!.text, preset).toLowerCase() === part;
-      const found = ids.findIndex(
-        (_, index) =>
-          readsAs(index, parts[0]!) &&
-          (parts.length === 1 || (index + 1 < ids.length && readsAs(index + 1, parts[1]!))),
-      );
-      const at = Math.max(0, found);
-      bigWords.push({ from: ids[at]!, to: ids[Math.min(at + parts.length - 1, ids.length - 1)]! });
-    }
+  // Each component reads back the stored items it owns; the hook is not one of the lists.
+  const choices: Record<string, unknown> = { ...emptyAnswer() };
+  for (const component of COMPONENT_LIST) {
+    if (!component.answer) continue;
+    const stored = (edit.tracks[component.stored.track] ?? []) as Placed[];
+    choices[component.answer.field] = component.readBack(
+      stored.filter((item) => component.owns(item)),
+      context,
+    );
   }
   const word_fixes: WordFix[] = [];
   for (const caption of edit.tracks.captions) {
@@ -183,5 +151,8 @@ export function choicesOf(edit: Edit, transcript: Transcript, preset: Preset): E
       word_fixes.push({ word: caption.words[0]!, text: caption.text });
     }
   }
-  return { accents, questions, big_words: bigWords, visuals, lists, word_fixes, hook };
+  const hook = COMPONENTS.HOOK.readBack(
+    edit.tracks.overlays.filter((item) => COMPONENTS.HOOK.owns(item)),
+  ).at(-1);
+  return { ...choices, word_fixes, hook: hook ?? null } as EngineInput;
 }

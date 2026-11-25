@@ -6,6 +6,7 @@ import {
   type VersionRows,
   baselineEdit,
   build,
+  emptyAnswer,
   headTrackSchema,
   pickVariants,
   placeEdit,
@@ -22,14 +23,7 @@ import { type StepContext, recordHit, runInProcessStep, stepClock } from "./step
 
 export const STEP = "first_version";
 
-const NO_CHOICES = {
-  accents: [],
-  questions: [],
-  big_words: [],
-  visuals: [],
-  lists: [],
-  word_fixes: [],
-};
+const NO_CHOICES = emptyAnswer();
 
 export interface FirstVersionRun {
   ctx: StepContext;

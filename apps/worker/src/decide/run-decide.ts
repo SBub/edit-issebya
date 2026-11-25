@@ -13,6 +13,7 @@ import {
   type StoredCorrection,
   type VersionBlobs,
   type VersionRows,
+  COMPONENTS,
   applyWordCorrections,
   build,
   correctedTranscript,
@@ -20,12 +21,10 @@ import {
   decideJsonSchema,
   editFromAnswer,
   headTrackSchema,
-  hookJsonSchema,
   keepOwnerAdds,
   liveCorrections,
   parseDecideAnswer,
   parseEdit,
-  parseHookAnswer,
   saveVersion,
   transcriptSchema,
   usedFreeField,
@@ -262,10 +261,11 @@ export function runDecide({
       // refused only by its schema, and it goes back once; a
       // second refusal fails the step, so no reel is saved without a hook.
       const hookSource = hookInput(spoken, preset);
-      const hookSchema = hookJsonSchema(preset);
+      const hookCall = COMPONENTS.HOOK.ownCall;
+      const hookSchema = hookCall.schema(preset);
       const hookOnce = async (context: Context, previous?: string[]): Promise<HookAttempt> => {
         const result = await ai.call({
-          role: "hook",
+          role: hookCall.role,
           ...hookPrompt(templates.hook, hookSource, previous),
           schema: hookSchema,
           signal: ctx.signal,
@@ -281,7 +281,7 @@ export function runDecide({
             rules: ["answer-json"],
           };
         }
-        const parsed = parseHookAnswer(result.answer, preset);
+        const parsed = hookCall.parse(result.answer, preset);
         if (!parsed.ok) return { ok: false, reasons: parsed.reasons, rules: ["answer-schema"] };
         return { ok: true, text: parsed.text };
       };

@@ -1,6 +1,6 @@
 # Component template: one class per component
 
-Status: approved plan, in progress (steps 0 and 1 done). The next pull requests follow the steps below.
+Status: approved plan, in progress (steps 0, 1 and 2 done). The next pull requests follow the steps below.
 
 Words used here. A **component** is a meaning the curator (the AI call that reads the transcript)
 picks: ACCENT, QUESTION, BIGWORD, VISUAL, LIST, and HOOK (its own AI call); CAPTION is placed from
@@ -54,17 +54,42 @@ in the evals' table. If any is forgotten the code does not compile.
 
 Each step is its own pull request and changes nothing a viewer or the AI can see.
 
-| Step | What                                                                                                                                                                                                       | Proof nothing changed                                                              |
-| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| 0    | Freeze tests (below). Done.                                                                                                                                                                                | they pass on `develop` before anything moves                                       |
-| 1    | Done. Names and identity: `ComponentName`, base class, seven subclasses with `name`, `looks`, `stored`, `order`, `owns`; `COMPONENTS`. The hand-kept lists (except the evals') read them.                  | freeze tests, typecheck                                                            |
-| 2    | Answer: `answer`, `validate`, `picks`, `readBack`, `trace`. The schema, `EngineInput`, `choicesOf`, the empty answers and the decision trace loop over `COMPONENTS`. `Hook.ownCall` is read by the worker. | the schema snapshot is identical; decide tests                                     |
-| 3    | Engine: `text`, `span`, `place`, `whenLeftOut`. The base `place` is today's accent path; the others call their existing functions. `placeExtra`'s `if` chain goes. Risky: split per component.             | placed edits and notes identical; golden pages                                     |
-| 4    | Studio: `owner`, `label`. The Edit tool, saved edits, carry-over and the timeline read them.                                                                                                               | all `owner-edit*` specs unchanged and green                                        |
-| 5    | Evals' table (`SCORERS`). `COMPONENTS`, `JUDGED_COMPONENTS`, the dataset schema and `COLUMNS` are built from it.                                                                                           | the eval scoring freeze unchanged                                                  |
-| 6    | SECTION: `"SECTION"` in the names, the `Section` class, the `section/number` look, one line each in `COMPONENTS` and `SCORERS`, dataset marks, docs, and the prompt version in PostHog once a draft wins.  | the SECTION branch's tests reused, plus a new spec for moving and editing a number |
+| Step | What                                                                                                                                                                                                             | Proof nothing changed                                                              |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| 0    | Freeze tests (below). Done.                                                                                                                                                                                      | they pass on `develop` before anything moves                                       |
+| 1    | Done. Names and identity: `ComponentName`, base class, seven subclasses with `name`, `looks`, `stored`, `order`, `owns`; `COMPONENTS`. The hand-kept lists (except the evals') read them.                        | freeze tests, typecheck                                                            |
+| 2    | Done. Answer: `answer`, `validate`, `picks`, `readBack`, `trace`. The schema, `EngineInput`, `choicesOf`, the empty answers and the decision trace loop over `COMPONENTS`. `Hook.ownCall` is read by the worker. | the schema snapshot is identical; decide tests                                     |
+| 3    | Engine: `text`, `span`, `place`, `whenLeftOut`. The base `place` is today's accent path; the others call their existing functions. `placeExtra`'s `if` chain goes. Risky: split per component.                   | placed edits and notes identical; golden pages                                     |
+| 4    | Studio: `owner`, `label`. The Edit tool, saved edits, carry-over and the timeline read them.                                                                                                                     | all `owner-edit*` specs unchanged and green                                        |
+| 5    | Evals' table (`SCORERS`). `COMPONENTS`, `JUDGED_COMPONENTS`, the dataset schema and `COLUMNS` are built from it.                                                                                                 | the eval scoring freeze unchanged                                                  |
+| 6    | SECTION: `"SECTION"` in the names, the `Section` class, the `section/number` look, one line each in `COMPONENTS` and `SCORERS`, dataset marks, docs, and the prompt version in PostHog once a draft wins.        | the SECTION branch's tests reused, plus a new spec for moving and editing a number |
 
 Docs change inside each step (a later doc `app_docs/components.md`, "how to add a component").
+
+## Step 2: what exists now
+
+`answer.ts` (next to the classes) holds the shared pieces: `AnswerField` (the answer field's name, the
+start of the engine's item id, the schema of one pick, `empty`), `phraseAnswer` (the plain
+"from word, to word" pick), `Pick`, `Problem`, `AnswerContext` and `ReadBackContext`. The base class
+gains `answer` (none by default), `validate`, `picks`, `readBack` and `trace`, each with the plain
+default (a phrase must not end before it starts; picks read from the field; the words under a
+stored item; `accent "..."`). `Bigword`, `Visual` and `List` override only what differs; `Hook`
+reads its text back and words its own pick. `COMPONENTS` now keeps each class's own type
+(`satisfies`), and `COMPONENT_LIST` is the same list as the base class.
+
+Now built from the classes, in the order of `COMPONENTS`: the answer schema sent to the AI and its
+extra rules (`decideAnswerSchemaFor`), `EngineInput` (its lists and their types), `emptyAnswer()`
+(the empty answers in the worker and `ai.ts`), `choicesOf` (find each component's stored items with
+`owns`, then `readBack`), `pickVariants`, and the decision trace's rows (`TracedAnswer` is the same
+type, loosened; `proposals` loops over `picks` and `trace`, the hook last as before).
+`Hook.ownCall` (`role`, prompt name `reel-hook`, answer schema, `parse`) is read by the worker's
+decide step and by `PROMPT_NAMES.hook`; the hook's answer schema moved into `hook.ts`
+(`decide.ts` re-exports it). The worker still runs the call.
+
+Kept as they were: `word_fixes` (the AI's fix of a misheard word; it belongs to no picking
+component), the script view `formatScript` (its per-component wording groups LIST items and trims
+whole lines, so it is not a plain `trace`), the studio's test double `ai-script.ts` (JSON literals
+of one test), and the doctor's hook probe. The reasons of a refused answer keep their old order (accents, questions, visuals, lists, big words, then fixes) through `VALIDATION_ORDER` in `decide.ts`, pinned by a test, because they go back to the AI in the retry message.
 
 ## Step 1: what exists now
 
@@ -77,7 +102,7 @@ each with a one-line meaning above its class) and `index.ts` (`COMPONENTS`). Now
 overlay in `placedComponents`, `owner-carry` and `owner-text` (`componentOfOverlay`, through
 `owns`), and the engine's private `Extra.kind`, now `HOOK | ACCENT | BIGWORD | VISUAL`.
 Left for their own steps: the studio's `LABELS` and the owner's move list (step 4, `label` and
-`owner`), `TracedAnswer` (step 2), the evals' lists (step 5), and the stored kind lists in
+`owner`), the evals' lists (step 5), and the stored kind lists in
 `schema.ts` and `TextBox.kind` (storage and drawing names, not component names).
 
 ## Step 0: the freeze tests

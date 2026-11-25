@@ -19,9 +19,10 @@ import {
   liveCorrections,
   ownerPictures,
   withOwnerCutouts,
+  COMPONENTS,
+  emptyAnswer,
   parseDecideAnswer,
   parseEdit,
-  parseHookAnswer,
   saveVersion,
   transcriptSchema,
   usedFreeField,
@@ -52,15 +53,7 @@ export const STEP = "relayout";
 
 // Nothing chosen: the placement of a version that never had an AI answer (the
 // first version: captions only, no hook).
-const NO_ANSWER: EngineInput = {
-  accents: [],
-  questions: [],
-  big_words: [],
-  visuals: [],
-  lists: [],
-  word_fixes: [],
-  hook: null,
-};
+const NO_ANSWER: EngineInput = { ...emptyAnswer(), hook: null };
 
 export interface RelayoutRun {
   ctx: StepContext;
@@ -105,7 +98,7 @@ export function answerOfRecord(
   const hookCall = lastAnswered(record.calls, "hook");
   let hook: EngineInput["hook"] = null;
   if (hookCall) {
-    const written = parseHookAnswer(parseJson(hookCall, "hook"), preset);
+    const written = COMPONENTS.HOOK.ownCall.parse(parseJson(hookCall, "hook"), preset);
     if (!written.ok) {
       throw new PermanentError(`${STEP}: the stored hook answer no longer parses`, {
         cause: written.reasons.join("; "),

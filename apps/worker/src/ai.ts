@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { type Attributes, type Context, SpanKind, SpanStatusCode } from "@opentelemetry/api";
+import { emptyAnswer } from "@edit-issebya/edit";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import {
   APICallError,
@@ -767,14 +768,7 @@ function scriptFrom(path: string): ScriptedReply[] {
 }
 
 // A decide answer with no items: what the double gives without a script.
-export const EMPTY_DECIDE_ANSWER = {
-  accents: [],
-  questions: [],
-  big_words: [],
-  visuals: [],
-  lists: [],
-  word_fixes: [],
-};
+export const EMPTY_DECIDE_ANSWER = emptyAnswer();
 
 // The hook the double gives without a script: a plain line, nothing spoken.
 const DEFAULT_HOOK_ANSWER = { text: "A short test hook" };
