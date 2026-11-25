@@ -42,6 +42,8 @@ export {
   editSchemaFor,
   parseEdit,
 } from "./schema.ts";
+export { type Component } from "./component-defs/base.ts";
+export { COMPONENTS } from "./component-defs/index.ts";
 export {
   type DecideAnswer,
   type DecideCounts,
@@ -64,6 +66,7 @@ export {
   type WordFix,
   bigWordSpan,
   choicesOf,
+  emptyAnswer,
 } from "./engine-input.ts";
 export { type EngineComponent, type EngineNote } from "./engine-note.ts";
 export {

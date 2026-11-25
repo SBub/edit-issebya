@@ -1,221 +1,104 @@
 import { z } from "zod";
+import type { ComponentName } from "./component-defs/names.ts";
+import type { AnswerContext } from "./component-defs/answer.ts";
+import { COMPONENT_LIST } from "./component-defs/index.ts";
 import type { EngineNote } from "./engine-note.ts";
 import { placeEdit } from "./engine.ts";
 import { pickVariants } from "./variant-picker.ts";
-import type { EngineInput } from "./engine-input.ts";
+import type { EngineInput, WordFix } from "./engine-input.ts";
 import { QUESTION_PREFIX } from "./question.ts";
 import { SAFE_ZONE } from "./engine-zones.ts";
 import type { HeadTrack } from "./head-track.ts";
 import type { Measurer } from "./measure.ts";
 import { type EditPhoto, photoIdsOf } from "./photos.ts";
-import { type Preset, cleanWord, wordsText } from "./preset.ts";
-import { BEHIND_WORD, type Edit, issueReasons, parseEdit } from "./schema.ts";
+import { type Preset, wordsText } from "./preset.ts";
+import { type Edit, issueReasons, parseEdit } from "./schema.ts";
 import type { Transcript } from "./transcript.ts";
+
+// The hook's own call answer lives with its component (`component-defs/hook.ts`).
+export {
+  hookAnswerSchemaFor,
+  hookJsonSchema,
+  parseHookAnswer,
+  stripHookStop,
+} from "./component-defs/hook.ts";
 
 // No count cap on any list here: how many of each the editor picks is its
 // choice. A limit is added only when a real case shows the need, derived from
 // that case.
-// The hook's text: no line break and nothing that could leave its tag (a
-// plain pattern, so a provider's JSON Schema validator reads it as is). The
-// same plain-line rule for a visual's description.
-const HOOK_TEXT = /^[^\n\r<>]+$/;
-// A visual's description: a short plain phrase, at most this many words.
-const VISUAL_WORDS = 8;
 
-// The hook as placed and saved: its final full stops and ellipses (".",
-// "...", "…", with any spaces after them) taken off, since a hook reads like
-// a post and never ends with a dot; "?" and "!" stay, and so does a dot
-// inside. Applied to every hook the answer writes, the owner's exact words too.
-export function stripHookStop(text: string): string {
-  return text.replace(/[\s.…]+$/u, "");
-}
-
-// The written hook's text, the same rules for the hook call's answer and for
-// the components' answer's hook: one line of plain words (no line break, no
-// tag), at most the preset's characters and words, with at least one letter
-// or digit once the final stop is taken off.
-function hookTextSchemaFor(preset: Preset) {
-  const { maxWords, maxCharacters } = preset.pace.hook;
-  return z
-    .string()
-    .min(1)
-    .max(maxCharacters, { message: `a hook has at most ${maxCharacters} characters` })
-    .regex(HOOK_TEXT, { message: "a hook is one line of plain text" })
-    .refine((text) => /[\p{L}\p{N}]/u.test(stripHookStop(text)), {
-      message: "a hook needs words",
-    })
-    .refine((text) => text.trim().split(/\s+/).length <= maxWords, {
-      message: `a hook has at most ${maxWords} words`,
-    });
-}
-
-// The hook call's answer (HOOK, its own call): `{ "text": "..." }` and
-// nothing else, the text checked by `hookTextSchemaFor`.
-export function hookAnswerSchemaFor(preset: Preset) {
-  return z.strictObject({ text: hookTextSchemaFor(preset) });
-}
-
-// The hook answer's JSON Schema, the structured output of the hook call (the
-// same draft-07 form as `decideJsonSchema`).
-export function hookJsonSchema(preset: Preset): Record<string, unknown> {
-  return z.toJSONSchema(hookAnswerSchemaFor(preset), {
-    target: "draft-07",
-    io: "output",
-    reused: "inline",
-  }) as Record<string, unknown>;
-}
-
-// The hook answer checked again by Zod, with readable reasons; the text is
-// returned as it is placed (`stripHookStop`), never refused for a final dot.
-export function parseHookAnswer(
-  json: unknown,
-  preset: Preset,
-): { ok: true; text: string } | { ok: false; reasons: string[] } {
-  const result = hookAnswerSchemaFor(preset).safeParse(json);
-  if (!result.success) return { ok: false, reasons: issueReasons(json, result.error.issues) };
-  return { ok: true, text: stripHookStop(result.data.text) };
-}
-
-// A visual's description: what the frame would show, in a few plain words. It
-// is never shown on screen; the schema, not the layout, checks its length.
-function visualDescriptionSchema() {
-  return z
-    .string()
-    .min(1)
-    .max(80, { message: "a visual description has at most 80 characters" })
-    .regex(HOOK_TEXT, { message: "a visual description is one line of plain text" })
-    .refine((text) => /[\p{L}\p{N}]/u.test(text), { message: "a visual description needs words" })
-    .refine((text) => text.trim().split(/\s+/).length <= VISUAL_WORDS, {
-      message: `a visual description has at most ${VISUAL_WORDS} words`,
-    });
-}
+// The order the components' rules run in (null: none), so the reasons come back in the order they
+// always have (the retry message sends them to the AI): accents, questions, visuals, lists, big
+// words. A component with no rank does not compile.
+const VALIDATION_RANK = {
+  HOOK: null,
+  ACCENT: 0,
+  QUESTION: 1,
+  VISUAL: 2,
+  LIST: 3,
+  BIGWORD: 4,
+  CAPTION: null,
+} satisfies Record<ComponentName, number | null>;
 
 // The decide step's answer, meaning only ("B strict"): Claude names words by
 // their transcript ids, never a time, a position, a size or a spot. It is the
-// layout engine's input (`EngineInput`) for the components: `accents`
-// (ACCENT), `questions` (QUESTION), `big_words` (BIGWORD), `visuals` (VISUAL:
-// over its words, with a short description of what it would show),
-// `lists` (LIST: the items of each numbered list, each over its phrase) and
-// `word_fixes`. The written hook
-// is not in it: its own call answers it (`hookAnswerSchemaFor`), and the decide
-// step puts the text beside these components when it places them. Built per
-// reel from its transcript. The refinement (dropped from the JSON Schema)
-// refuses a phrase ending before it starts, a LIST item's key phrase starting
-// outside its phrase, a big word that is not one or two plain words in a row,
-// and a word fixed twice.
-export function decideAnswerSchemaFor(preset: Preset, transcript: Transcript) {
+// layout engine's input (`EngineInput`): one list per component that has an
+// `answer` (`component-defs/`: `accents`, `questions`, `big_words`, `visuals`,
+// `lists`, in the order of `COMPONENTS`), then `word_fixes`. Each component
+// brings its own schema and its own extra rules (`validate`); the answer's
+// refinement (dropped from the JSON Schema) runs them in order and then
+// refuses a word fixed twice. The written hook is not in it: its own call
+// answers it (`hookAnswerSchemaFor`), and the decide step puts the text beside
+// these components when it places them. Built per reel from its transcript.
+export function decideAnswerSchemaFor(
+  preset: Preset,
+  transcript: Transcript,
+): z.ZodType<DecideAnswer> {
   const ids = transcript.words.map((word) => word.id);
-  const order = new Map(ids.map((id, index) => [id, index]));
-  const words = new Map(transcript.words.map((word) => [word.id, word]));
-  const wordId = ids.length > 0 ? z.enum(ids as [string, ...string[]]) : z.never();
-  const phrase = { from: wordId, to: wordId };
-  return z
-    .strictObject({
-      // ACCENT: a phrase worth stressing.
-      accents: z.array(z.strictObject(phrase)),
-      // QUESTION: a question the speaker puts to the viewer, over its words;
-      // none when the reel has none.
-      questions: z.array(z.strictObject(phrase)),
-      // BIGWORD: one or two consecutive plain words shown large behind the
-      // speaker, from the first spoken word to the last (equal for one word);
-      // the same word may come back.
-      big_words: z.array(z.strictObject(phrase)),
-      // VISUAL: an empty frame over its words, with what it would show.
-      visuals: z.array(z.strictObject({ ...phrase, description: visualDescriptionSchema() })),
-      // LIST: the lists of the reel's numbered phrases, in reel order. Each
-      // list's items are numbered 1, 2, ... in order; a list of one item shows
-      // no number. A list has at least one item.
-      lists: z.array(
-        z.strictObject({
-          items: z.array(z.strictObject({ ...phrase, key_from: wordId })).min(1),
-        }),
-      ),
-      word_fixes: z.array(z.strictObject({ word: wordId, text: z.string().min(1).max(60) })),
-    })
-    .superRefine((answer, ctx) => {
-      const lists = {
-        accents: answer.accents,
-        questions: answer.questions,
-        visuals: answer.visuals,
-      };
-      for (const [name, list] of Object.entries(lists)) {
-        list.forEach((item, index) => {
-          if (order.get(item.to)! < order.get(item.from)!) {
-            ctx.addIssue({
-              code: "custom",
-              path: [name, index, "to"],
-              message: `ends on ${item.to}, before it starts on ${item.from}`,
-            });
-          }
+  const context: AnswerContext = {
+    preset,
+    ids,
+    order: new Map(ids.map((id, index) => [id, index])),
+    words: new Map(transcript.words.map((word) => [word.id, word])),
+    wordId: ids.length > 0 ? z.enum(ids as [string, ...string[]]) : z.never(),
+  };
+  const shape: Record<string, z.ZodType> = {};
+  for (const component of COMPONENT_LIST) {
+    if (component.answer) shape[component.answer.field] = component.answer.schema(context);
+  }
+  shape.word_fixes = z.array(
+    z.strictObject({ word: context.wordId, text: z.string().min(1).max(60) }),
+  );
+  return z.strictObject(shape).superRefine((answer, ctx) => {
+    const ranked = COMPONENT_LIST.filter((component) => VALIDATION_RANK[component.name] !== null);
+    ranked.sort((a, b) => VALIDATION_RANK[a.name]! - VALIDATION_RANK[b.name]!);
+    for (const component of ranked) {
+      if (!component.answer) continue;
+      for (const problem of component.validate(
+        answer[component.answer.field] as unknown[],
+        context,
+      )) {
+        ctx.addIssue({ code: "custom", ...problem });
+      }
+    }
+    const fixed = new Set<string>();
+    for (const fix of answer.word_fixes as WordFix[]) {
+      if (fixed.has(fix.word)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["word_fixes"],
+          message: `${fix.word} is fixed twice`,
         });
       }
-      answer.lists.forEach((list, listIndex) => {
-        list.items.forEach((item, index) => {
-          const path = ["lists", listIndex, "items", index];
-          if (order.get(item.to)! < order.get(item.from)!) {
-            ctx.addIssue({
-              code: "custom",
-              path: [...path, "to"],
-              message: `ends on ${item.to}, before it starts on ${item.from}`,
-            });
-          }
-          const key = order.get(item.key_from)!;
-          if (key < order.get(item.from)! || key > order.get(item.to)!) {
-            ctx.addIssue({
-              code: "custom",
-              path: [...path, "key_from"],
-              message: `key phrase starts on ${item.key_from}, outside ${item.from} to ${item.to}`,
-            });
-          }
-        });
-      });
-      answer.big_words.forEach((big, index) => {
-        const from = order.get(big.from)!;
-        const to = order.get(big.to)!;
-        if (to < from) {
-          ctx.addIssue({
-            code: "custom",
-            path: ["big_words", index, "to"],
-            message: `ends on ${big.to}, before it starts on ${big.from}`,
-          });
-          return;
-        }
-        if (to - from > 1) {
-          ctx.addIssue({
-            code: "custom",
-            path: ["big_words", index, "to"],
-            message: `${big.from} to ${big.to} spans ${to - from + 1} words; a big word is one or two consecutive words`,
-          });
-          return;
-        }
-        // Each word is checked on its own: one plain word of at most 24 letters.
-        ids.slice(from, to + 1).forEach((id) => {
-          const text = cleanWord(words.get(id)?.text ?? "", preset);
-          if (!BEHIND_WORD.test(text)) {
-            ctx.addIssue({
-              code: "custom",
-              path: ["big_words", index, "to"],
-              message: `${id} (${JSON.stringify(text)}) is not one plain word of at most 24 letters`,
-            });
-          }
-        });
-      });
-      const fixed = new Set<string>();
-      for (const fix of answer.word_fixes) {
-        if (fixed.has(fix.word)) {
-          ctx.addIssue({
-            code: "custom",
-            path: ["word_fixes"],
-            message: `${fix.word} is fixed twice`,
-          });
-        }
-        fixed.add(fix.word);
-      }
-    });
+      fixed.add(fix.word);
+    }
+    // The cast: the shape is built from the components' fields at run time, so its type is a plain
+    // record; each field's own type is checked in its class (`AnswerField`), not here.
+  }) as unknown as z.ZodType<DecideAnswer>;
 }
 
 // The components' answer (no hook: see `hookAnswerSchemaFor`).
-export type DecideAnswer = z.infer<ReturnType<typeof decideAnswerSchemaFor>>;
+export type DecideAnswer = Omit<EngineInput, "hook">;
 
 // The answer's JSON Schema, the structured output the worker's AI runner asks
 // for: real `enum` lists, every object closed (`additionalProperties: false`),

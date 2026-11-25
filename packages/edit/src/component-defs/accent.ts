@@ -1,4 +1,6 @@
+import { type AnswerField, phraseAnswer } from "./answer.ts";
 import { Component, type StoredItem } from "./base.ts";
+import type { AccentChoice } from "../engine-input.ts";
 import { VARIANTS } from "../variants.ts";
 import { QUESTION_PREFIX } from "../question.ts";
 
@@ -7,6 +9,10 @@ export class Accent extends Component {
   readonly name = "ACCENT" as const;
   readonly looks = [VARIANTS["accent/above-head"]];
   readonly order = 1;
+  override readonly answer: AnswerField<"accents", AccentChoice> = phraseAnswer(
+    "accents",
+    "accent",
+  );
 
   // A question is stored as an accent with a `question-` id.
   override owns(item: StoredItem): boolean {

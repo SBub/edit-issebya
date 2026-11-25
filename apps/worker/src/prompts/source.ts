@@ -1,10 +1,11 @@
+import { COMPONENTS } from "@edit-issebya/edit";
 import { TransientError } from "../failure.ts";
 
 // The prompts the worker's AI calls send. Their text lives only in PostHog
 // prompt management (app_docs/decide-step.md, "Prompts"); the worker fetches
 // each one by name and label, and never keeps a copy in the repository.
 export const PROMPT_NAMES = {
-  hook: "reel-hook",
+  hook: COMPONENTS.HOOK.ownCall.prompt,
   components: "reel-components",
   describe: "photo-describe",
 } as const;

@@ -300,6 +300,37 @@ describe("the hook", () => {
   });
 });
 
+describe("the order of the reasons", () => {
+  // The reasons go back to the AI in the retry message: one answer that breaks a rule in every
+  // component lists them accents, questions, visuals, lists, big words, then fixes (as before the
+  // component classes).
+  it("is accents, questions, visuals, lists, big words, word fixes", () => {
+    const bad = answer((a) => {
+      a.accents = [{ from: "w0008", to: "w0006" }];
+      a.questions = [{ from: "w0008", to: "w0006" }];
+      a.visuals = [{ from: "w0008", to: "w0006", description: "a thing" }];
+      a.lists = [{ items: [{ from: "w0008", to: "w0006", key_from: "w0009" }] }];
+      a.big_words = [{ from: "w0008", to: "w0006" }];
+      a.word_fixes = [
+        { word: "w0010", text: "a" },
+        { word: "w0010", text: "b" },
+      ];
+    });
+    const parsed = parse(bad);
+    expect(parsed.ok).toBe(false);
+    const paths = (parsed.ok ? [] : parsed.reasons).map((reason) => reason.split(": ")[0]);
+    expect(paths).toEqual([
+      "accents.0.to",
+      "questions.0.to",
+      "visuals.0.to",
+      "lists.0.items.0.to",
+      "lists.0.items.0.key_from",
+      "big_words.0.to",
+      "word_fixes",
+    ]);
+  });
+});
+
 describe("parseDecideAnswer", () => {
   it("accepts a valid answer", () => {
     expect(parse(answer())).toMatchObject({ ok: true });

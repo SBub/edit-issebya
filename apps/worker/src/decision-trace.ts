@@ -1,25 +1,23 @@
-import { type EngineNote, bigWordSpan } from "@edit-issebya/edit";
+import {
+  COMPONENTS,
+  type Component,
+  type EngineInput,
+  type EngineNote,
+  bigWordSpan,
+} from "@edit-issebya/edit";
 
 // THE DECISION TRACE: what Claude proposed for a version (its decide answer)
 // beside what the layout engine did to each item (the version's engine
 // record), one row per proposed item. Read-only: it explains a saved version,
 // it never changes one.
 
-// The parts of a decide answer the trace reads. Loose on purpose: an older
-// version's answer may lack a list a newer prompt added. `visuals` is the
-// VISUAL list of an answer.
-export interface TracedAnswer {
-  accents?: { from: string; to: string }[];
-  // A QUESTION: a question the speaker puts to the viewer (none in an older answer).
-  questions?: { from: string; to: string }[];
-  // A BIGWORD: one or two words (`from` to `to`); an older answer's `word` is one word.
-  big_words?: { from: string; to: string }[];
-  visuals?: { from: string; to: string; description?: string }[];
-  // LIST: the lists of items, each item a numbered phrase (in list order).
+// The parts of a decide answer the trace reads: each component's list (its
+// `answer` field, `component-defs/`), `word_fixes` and the hook. Every one
+// may be missing: an older version's answer lacks a list a newer prompt added.
+// The trace reads a LIST item's words only, so its `key_from` is not asked.
+export type TracedAnswer = Partial<Omit<EngineInput, "lists">> & {
   lists?: { items: { from: string; to: string }[] }[];
-  word_fixes?: { word: string; text: string }[];
-  hook?: { text: string } | null;
-}
+};
 
 export interface TraceRow {
   // The answer reference (`accents[0]`) and the engine's item id (`accent-1`).
@@ -58,59 +56,21 @@ export function wordsBetween(
 }
 
 // The answer's items in order, each with its reference and the engine id it
-// is placed under: accents `accent-N` in answer order, the rest `<kind>-N` by
-// index.
+// is placed under: every component's picks (`picks`), in the order of
+// `COMPONENTS`, then the hook (its own call) last, each worded by its
+// component (`trace`).
 function proposals(
   answer: TracedAnswer,
   say: (from: string, to: string) => string,
 ): { ref: string; item: string; proposed: string }[] {
-  const out: { ref: string; item: string; proposed: string }[] = [];
-  (answer.accents ?? []).forEach((accent, index) => {
-    out.push({
-      ref: `accents[${index}]`,
-      item: `accent-${index + 1}`,
-      proposed: `accent "${say(accent.from, accent.to)}"`,
-    });
-  });
-  (answer.questions ?? []).forEach((question, index) => {
-    out.push({
-      ref: `questions[${index}]`,
-      item: `question-${index + 1}`,
-      proposed: `question "${say(question.from, question.to)}"`,
-    });
-  });
-  (answer.big_words ?? []).forEach((big, index) => {
-    const span = bigWordSpan(big);
-    out.push({
-      ref: `big_words[${index}]`,
-      item: `big-word-${index + 1}`,
-      proposed: `bigword "${say(span.from, span.to)}"`,
-    });
-  });
-  (answer.visuals ?? []).forEach((visual, index) => {
-    out.push({
-      ref: `visuals[${index}]`,
-      item: `visual-${index + 1}`,
-      proposed: `visual "${visual.description ?? ""}" on "${say(visual.from, visual.to)}"`,
-    });
-  });
-  // A LIST item's engine id counts the items of every list in reel order; its
-  // proposal names its list and its place in it (`list 2.1`).
-  let transition = 0;
-  (answer.lists ?? []).forEach((list, listIndex) => {
-    list.items.forEach((item, position) => {
-      transition += 1;
-      out.push({
-        ref: `lists[${listIndex}].items[${position}]`,
-        item: `transition-${transition}`,
-        proposed: `list ${listIndex + 1}.${position + 1} "${say(item.from, item.to)}"`,
-      });
-    });
-  });
-  if (answer.hook) {
-    out.push({ ref: "hook", item: "hook", proposed: `hook "${answer.hook.text}"` });
-  }
-  return out;
+  const { HOOK, ...others } = COMPONENTS;
+  return [...Object.values<Component>(others), HOOK].flatMap((component) =>
+    component.picks(answer).map((pick) => ({
+      ref: pick.ref,
+      item: pick.item,
+      proposed: component.trace(pick, say),
+    })),
+  );
 }
 
 // Joins an answer and the engine record into rows.

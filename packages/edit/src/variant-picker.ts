@@ -1,6 +1,6 @@
 import type { EngineInput } from "./engine-input.ts";
 import type { EngineComponent } from "./engine-note.ts";
-import { COMPONENTS } from "./component-defs/index.ts";
+import { COMPONENTS, COMPONENT_LIST } from "./component-defs/index.ts";
 import type { BoxVariant, StackVariant, TextVariant, Variant } from "./variants.ts";
 
 // The variant picker (`specs/layout-engine.md`, "Writing a variant"): each pick
@@ -19,17 +19,15 @@ export function variantOf(component: EngineComponent): Variant {
 // the answer has no pick of is absent.
 export type PickedVariants = ReadonlyMap<EngineComponent, Variant>;
 
-// Each pick of `input` to its entry: the hook when there is one, each kind of
-// pick the answer holds, and the captions.
+// Each pick of `input` to its entry: each component the answer holds a pick
+// of (the hook when there is one), in the order of `COMPONENTS`, and the
+// captions.
 export function pickVariants(input: EngineInput): PickedVariants {
   const picked = new Map<EngineComponent, Variant>();
   const pick = (component: EngineComponent) => picked.set(component, variantOf(component));
-  if (input.hook) pick("HOOK");
-  if (input.accents.length > 0) pick("ACCENT");
-  if (input.questions.length > 0) pick("QUESTION");
-  if (input.big_words.length > 0) pick("BIGWORD");
-  if (input.visuals.length > 0) pick("VISUAL");
-  if (input.lists.length > 0) pick("LIST");
+  for (const component of COMPONENT_LIST) {
+    if (component.picks(input).length > 0) pick(component.name);
+  }
   pick("CAPTION");
   return picked;
 }
