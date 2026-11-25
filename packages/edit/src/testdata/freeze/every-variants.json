@@ -1,0 +1,177 @@
+{
+  "HOOK": {
+    "component": "HOOK",
+    "variant": "hook/typed",
+    "layer": "front",
+    "type": "text",
+    "style": {
+      "font": "artistic",
+      "color": "#FFFFFF",
+      "base": 110
+    },
+    "zones": [
+      "upper-third",
+      "anywhere-in-safe-zone"
+    ],
+    "timing": {
+      "option": "window",
+      "from": 0.2,
+      "to": 3
+    },
+    "hides": false,
+    "entrance": "type",
+    "entranceUnit": "letter",
+    "entranceSpan": 0.6,
+    "sound": "typing",
+    "soundLevel": -8,
+    "caret": "bar"
+  },
+  "ACCENT": {
+    "component": "ACCENT",
+    "variant": "accent/above-head",
+    "layer": "front",
+    "type": "text",
+    "style": {
+      "font": "artistic",
+      "color": "#FFFFFF",
+      "base": 110
+    },
+    "zones": [
+      "above-head",
+      "upper-third",
+      "anywhere-in-safe-zone"
+    ],
+    "timing": {
+      "option": "words"
+    },
+    "hides": true
+  },
+  "QUESTION": {
+    "component": "QUESTION",
+    "variant": "question/word-by-word",
+    "layer": "front",
+    "type": "text",
+    "style": {
+      "font": "artistic",
+      "color": "#FFFFFF",
+      "base": 110
+    },
+    "zones": [
+      "above-head",
+      "upper-third",
+      "anywhere-in-safe-zone"
+    ],
+    "timing": {
+      "option": "words"
+    },
+    "hides": true
+  },
+  "BIGWORD": {
+    "component": "BIGWORD",
+    "variant": "bigword/behind",
+    "layer": "behind",
+    "type": "text",
+    "style": {
+      "font": "artistic",
+      "color": "#FFFFFF",
+      "base": "largest-fit"
+    },
+    "zones": [
+      "head-top"
+    ],
+    "timing": {
+      "option": "words-lead",
+      "lead": 0.2,
+      "minimum": 1.5
+    },
+    "hides": true,
+    "sound": "pop"
+  },
+  "VISUAL": {
+    "component": "VISUAL",
+    "variant": "visual/card",
+    "layer": "front",
+    "type": "box",
+    "style": {
+      "stroke": {
+        "color": "#FFFFFF",
+        "px": 2
+      }
+    },
+    "zones": [
+      "corner",
+      "beside-face"
+    ],
+    "timing": {
+      "option": "words-min-max",
+      "minimum": 1,
+      "maximum": 2
+    },
+    "hides": false,
+    "width": "1/3",
+    "sound": "pop"
+  },
+  "LIST": {
+    "component": "LIST",
+    "variant": "list/numbered",
+    "layer": "front",
+    "type": "text",
+    "levels": [
+      {
+        "role": "number",
+        "style": {
+          "font": "artistic",
+          "color": "#FFFFFF",
+          "base": 110
+        },
+        "ratio": 2.727272727272727
+      },
+      {
+        "role": "lead",
+        "style": {
+          "font": "simple",
+          "color": "#FFFFFF",
+          "base": 50
+        }
+      },
+      {
+        "role": "key",
+        "style": {
+          "font": "artistic",
+          "color": "#FFFFFF",
+          "base": 110
+        }
+      }
+    ],
+    "zones": [
+      "upper-third",
+      "anywhere-in-safe-zone"
+    ],
+    "timing": {
+      "option": "words-entrance",
+      "entrance": 0.3
+    },
+    "hides": true
+  },
+  "CAPTION": {
+    "component": "CAPTION",
+    "variant": "caption/default",
+    "layer": "front",
+    "type": "text",
+    "style": {
+      "font": "simple",
+      "color": "#FFFFFF",
+      "base": 50
+    },
+    "zones": [
+      "beside-face",
+      "below-face",
+      "caption-line",
+      "anywhere-in-safe-zone"
+    ],
+    "timing": {
+      "option": "caption-groups"
+    },
+    "hides": false
+  }
+}

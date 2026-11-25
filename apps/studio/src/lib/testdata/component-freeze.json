@@ -1,0 +1,1305 @@
+{
+  "said": [
+    {
+      "id": "cw0",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: the",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw1",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: time",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw2",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: we're",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw3",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: living",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw4",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: right",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw5",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: now",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw6",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: push",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw7",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: us",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw8",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: to",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw9",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: rethink",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw10",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: how",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw11",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: we",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw12",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: earn",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw13",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: how",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw14",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: we",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw15",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: spend",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw16",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: our",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw17",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: time",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw18",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: how",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw19",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: we",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw20",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: allocate",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw21",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: our",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw22",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: resources",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw23",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: what",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw24",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: we",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw25",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: do",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw26",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: AI",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw27",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: has",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw28",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: completely",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw30",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: the",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw31",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: way",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw32",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: we",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw33",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: work",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw34",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: but",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw35",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: at",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw36",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: the",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw37",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: same",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw38",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: time",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw39",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: it",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw40",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: has",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw41",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: given",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw42",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: us",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw43",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: a",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw44",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: chance",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw45",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: to",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw46",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: start",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw47",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: a",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw48",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: business",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw49",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: a",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw50",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: project",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw51",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: put",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw52",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: those",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw53",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: things",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw54",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: out",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw55",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: of",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw56",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: my",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw57",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: head",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw58",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: give",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw59",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: it",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw60",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: to",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw61",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: the",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw62",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: world",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw63",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: social",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw64",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: media",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw65",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: has",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw66",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: given",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw67",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: us",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw68",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: alternative",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw69",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: ways",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw70",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: to",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw71",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: earn",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw72",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: and",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw73",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: is",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw74",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: an",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw75",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: excellent",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw77",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: channel",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw78",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: for",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw79",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: your",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw80",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: project",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw81",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: for",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw82",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: your",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw83",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: idea",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw84",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: and",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw85",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: if",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw86",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: you",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw87",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: look",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw88",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: at",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw89",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: Gen Z",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw91",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: they",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw92",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: don't",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw93",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: live",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw94",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: to",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw95",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: work",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw96",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: they",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw97",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: work",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw98",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: to",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw99",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: live",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw104",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: flexible",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw105",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: time",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw109",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: and",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw110",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: sense",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw111",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: of",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw113",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: we",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw114",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: have",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw115",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: it",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw116",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: all",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw117",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: new",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw118",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: tools",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw119",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: new",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw120",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: ways",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw121",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: to",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw122",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: earn",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw123",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: whole",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw124",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: generation",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw125",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: saying",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw126",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: work",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw127",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: should",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw128",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: fund",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw129",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: life",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw130",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: not",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw131",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: take",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw132",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: it",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw133",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: over",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw142",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: feel",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw143",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: more",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw144",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: ours",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw145",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: maybe",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw146",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: because",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw147",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: we",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw148",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: never",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw149",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: stepped",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw150",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: far",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw151",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: away",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw152",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: from",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw153",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: our",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw154",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: routine",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw155",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: to",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw156",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: actually",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw157",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: hear",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw158",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: what",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw159",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: we",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw160",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: really",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "cw161",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: want?",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "hook",
+      "component": "HOOK",
+      "label": "Hook",
+      "option": "Hook: Gen Z won't work like you d…",
+      "canEditText": true,
+      "canRewrap": true
+    },
+    {
+      "id": "accent-1",
+      "component": "ACCENT",
+      "label": "Accent",
+      "option": "Accent: disrupted",
+      "canEditText": true,
+      "canRewrap": true
+    },
+    {
+      "id": "accent-2",
+      "component": "ACCENT",
+      "label": "Accent",
+      "option": "Accent: purpose",
+      "canEditText": true,
+      "canRewrap": true
+    },
+    {
+      "id": "question-1",
+      "component": "QUESTION",
+      "label": "Question",
+      "option": "Question: and still for most of us li…",
+      "canEditText": true,
+      "canRewrap": true
+    },
+    {
+      "id": "block_cw0",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: the time we're living right…",
+      "canEditText": true,
+      "canRewrap": true
+    },
+    {
+      "id": "block_cw26",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: AI has completely the way w…",
+      "canEditText": true,
+      "canRewrap": true
+    },
+    {
+      "id": "block_cw63",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: social media has given us a…",
+      "canEditText": true,
+      "canRewrap": true
+    },
+    {
+      "id": "block_cw84",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: and if you look at Gen Z th…",
+      "canEditText": true,
+      "canRewrap": true
+    },
+    {
+      "id": "block_cw104",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: flexible time and sense of",
+      "canEditText": true,
+      "canRewrap": true
+    },
+    {
+      "id": "block_cw113",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: we have it all",
+      "canEditText": true,
+      "canRewrap": true
+    },
+    {
+      "id": "block_cw117",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: new tools new ways to earn…",
+      "canEditText": true,
+      "canRewrap": true
+    },
+    {
+      "id": "block_cw142",
+      "component": "CAPTION",
+      "label": "Captions",
+      "option": "Captions: feel more ours maybe becaus…",
+      "canEditText": true,
+      "canRewrap": true
+    },
+    {
+      "id": "transition-1",
+      "component": "LIST",
+      "label": "List",
+      "option": "List: 1 they want fair pay",
+      "canEditText": true,
+      "canRewrap": true
+    },
+    {
+      "id": "transition-2",
+      "component": "LIST",
+      "label": "List",
+      "option": "List: 2 protected mental health",
+      "canEditText": true,
+      "canRewrap": true
+    },
+    {
+      "id": "visual-1",
+      "component": "VISUAL",
+      "label": "Visual",
+      "option": "Visual: ",
+      "canEditText": false,
+      "canRewrap": false
+    },
+    {
+      "id": "big-word-1",
+      "component": "BIGWORD",
+      "label": "Big word",
+      "option": "Big word: distribution",
+      "canEditText": true,
+      "canRewrap": false
+    }
+  ],
+  "scaled": [
+    {
+      "rotation": 0,
+      "box": {
+        "x": 100,
+        "y": 200,
+        "width": 450,
+        "height": 600
+      }
+    },
+    {
+      "rotation": 30,
+      "box": {
+        "x": 39.95190528383296,
+        "y": 224.1025403784438,
+        "width": 450,
+        "height": 600
+      }
+    },
+    {
+      "rotation": 90,
+      "box": {
+        "x": -75,
+        "y": 175,
+        "width": 450,
+        "height": 600
+      }
+    }
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "accents": [
+    {
+      "from": "w29",
+      "to": "w29"
+    },
+    {
+      "from": "w112",
+      "to": "w112"
+    }
+  ],
+  "questions": [
+    {
+      "from": "w134",
+      "to": "w141"
+    }
+  ],
+  "big_words": [
+    {
+      "from": "w76",
+      "to": "w76"
+    }
+  ],
+  "visuals": [
+    {
+      "from": "w18",
+      "to": "w24"
+    }
+  ],
+  "lists": [
+    {
+      "items": [
+        {
+          "from": "w100",
+          "to": "w103",
+          "key_from": "w102"
+        },
+        {
+          "from": "w106",
+          "to": "w108",
+          "key_from": "w107"
+        }
+      ]
+    }
+  ],
+  "word_fixes": [
+    {
+      "word": "w89",
+      "text": "Gen Z"
+    },
+    {
+      "word": "w161",
+      "text": "want?"
+    }
+  ],
+  "hook": {
+    "text": "Gen Z won't work like you did"
+  }
+}

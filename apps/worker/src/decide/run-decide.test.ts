@@ -683,6 +683,34 @@ describe("runDecide when the AI is not available", () => {
     expect(lastCall(calls).call).toBe("waiting");
   });
 
+  // The component template freeze (app_docs/component-template.md, step 0):
+  // what the worker passes for the hook's own call, its role, the prompt it
+  // fetches by name and the answer schema. Step 2 moves this into
+  // `Hook.ownCall`. No prompt wording: the placeholder prompts only.
+  it("freezes the hook call's role, prompt name and answer schema", async () => {
+    const ai = aiScript([scripted]);
+    const fetched: string[] = [];
+    const prompts: PromptSource = {
+      async get(name) {
+        fetched.push(name);
+        return fakePromptSource().get(name);
+      },
+    };
+    const { run } = await decide(ai, undefined, prompts);
+    await run;
+    const hook = ai.calls[0]!;
+    const out = {
+      role: hook.role,
+      promptVersion: hook.promptVersion,
+      promptRef: hook.promptRef,
+      fetched: [...fetched].sort(),
+      schema: hook.schema,
+    };
+    await expect(`${JSON.stringify(out, null, 2)}\n`).toMatchFileSnapshot(
+      "../testdata/hook-call-freeze.json",
+    );
+  });
+
   it("fails transiently, before any AI call, when a prompt PostHog cannot serve is needed", async () => {
     const ai = aiScript([scripted]);
     const prompts: PromptSource = {

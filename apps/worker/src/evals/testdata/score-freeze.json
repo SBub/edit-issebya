@@ -1,0 +1,378 @@
+{
+  "labels": [
+    [
+      {
+        "label": "good",
+        "why": "match"
+      },
+      {
+        "label": "bad",
+        "why": "partial"
+      },
+      {
+        "label": "bad",
+        "why": "extra"
+      },
+      {
+        "label": "good",
+        "why": "match"
+      },
+      {
+        "label": "bad",
+        "why": "extra"
+      },
+      {
+        "label": "good",
+        "why": "match"
+      },
+      {
+        "label": "good",
+        "why": "match"
+      },
+      {
+        "label": "bad",
+        "why": "extra"
+      },
+      {
+        "label": "good",
+        "why": "match"
+      },
+      {
+        "label": "bad",
+        "why": "setup"
+      }
+    ],
+    [
+      {
+        "label": "good",
+        "why": "match"
+      },
+      {
+        "label": "good",
+        "why": "match"
+      },
+      {
+        "label": "bad",
+        "why": "extra"
+      },
+      {
+        "label": "good",
+        "why": "match"
+      },
+      {
+        "label": "bad",
+        "why": "extra"
+      }
+    ]
+  ],
+  "perRun": [
+    {
+      "overall": {
+        "picks": 10,
+        "good": 5,
+        "marks": 6,
+        "matched": 5
+      },
+      "byComponent": {
+        "accent": {
+          "picks": 4,
+          "good": 1,
+          "marks": 2,
+          "matched": 1
+        },
+        "bigword": {
+          "picks": 2,
+          "good": 1,
+          "marks": 1,
+          "matched": 1
+        },
+        "list": {
+          "picks": 1,
+          "good": 1,
+          "marks": 1,
+          "matched": 1
+        },
+        "question": {
+          "picks": 1,
+          "good": 1,
+          "marks": 1,
+          "matched": 1
+        },
+        "visual": {
+          "picks": 2,
+          "good": 1,
+          "marks": 1,
+          "matched": 1
+        }
+      },
+      "listItems": {
+        "picks": 3,
+        "good": 3,
+        "marks": 3,
+        "matched": 3
+      }
+    },
+    {
+      "overall": {
+        "picks": 5,
+        "good": 3,
+        "marks": 4,
+        "matched": 3
+      },
+      "byComponent": {
+        "accent": {
+          "picks": 1,
+          "good": 1,
+          "marks": 1,
+          "matched": 1
+        },
+        "bigword": {
+          "picks": 1,
+          "good": 1,
+          "marks": 1,
+          "matched": 1
+        },
+        "list": {
+          "picks": 2,
+          "good": 1,
+          "marks": 1,
+          "matched": 1
+        },
+        "question": {
+          "picks": 1,
+          "good": 0,
+          "marks": 1,
+          "matched": 0
+        },
+        "visual": {
+          "picks": 0,
+          "good": 0,
+          "marks": 0,
+          "matched": 0
+        }
+      },
+      "listItems": {
+        "picks": 3,
+        "good": 1,
+        "marks": 2,
+        "matched": 1
+      }
+    }
+  ],
+  "total": {
+    "overall": {
+      "picks": 15,
+      "good": 8,
+      "marks": 10,
+      "matched": 8
+    },
+    "byComponent": {
+      "accent": {
+        "picks": 5,
+        "good": 2,
+        "marks": 3,
+        "matched": 2
+      },
+      "bigword": {
+        "picks": 3,
+        "good": 2,
+        "marks": 2,
+        "matched": 2
+      },
+      "list": {
+        "picks": 3,
+        "good": 2,
+        "marks": 2,
+        "matched": 2
+      },
+      "question": {
+        "picks": 2,
+        "good": 1,
+        "marks": 2,
+        "matched": 1
+      },
+      "visual": {
+        "picks": 2,
+        "good": 1,
+        "marks": 1,
+        "matched": 1
+      }
+    },
+    "listItems": {
+      "picks": 6,
+      "good": 4,
+      "marks": 5,
+      "matched": 4
+    }
+  },
+  "columns": [
+    {
+      "key": "overall",
+      "title": "Overall F1",
+      "scorer": "curator_f1_overall",
+      "counts": {
+        "picks": 15,
+        "good": 8,
+        "marks": 10,
+        "matched": 8
+      },
+      "prf": {
+        "precision": 0.5333333333333333,
+        "recall": 0.8,
+        "f1": 0.64
+      },
+      "perRun": [
+        {
+          "precision": 0.5,
+          "recall": 0.8333333333333334,
+          "f1": 0.625
+        },
+        {
+          "precision": 0.6,
+          "recall": 0.75,
+          "f1": 0.6666666666666665
+        }
+      ]
+    },
+    {
+      "key": "accent",
+      "title": "accent",
+      "scorer": "curator_f1_accent",
+      "counts": {
+        "picks": 5,
+        "good": 2,
+        "marks": 3,
+        "matched": 2
+      },
+      "prf": {
+        "precision": 0.4,
+        "recall": 0.6666666666666666,
+        "f1": 0.5
+      },
+      "perRun": [
+        {
+          "precision": 0.25,
+          "recall": 0.5,
+          "f1": 0.3333333333333333
+        },
+        {
+          "precision": 1,
+          "recall": 1,
+          "f1": 1
+        }
+      ]
+    },
+    {
+      "key": "bigword",
+      "title": "bigword",
+      "scorer": "curator_f1_bigword",
+      "counts": {
+        "picks": 3,
+        "good": 2,
+        "marks": 2,
+        "matched": 2
+      },
+      "prf": {
+        "precision": 0.6666666666666666,
+        "recall": 1,
+        "f1": 0.8
+      },
+      "perRun": [
+        {
+          "precision": 0.5,
+          "recall": 1,
+          "f1": 0.6666666666666666
+        },
+        {
+          "precision": 1,
+          "recall": 1,
+          "f1": 1
+        }
+      ]
+    },
+    {
+      "key": "list",
+      "title": "list (items)",
+      "scorer": "curator_f1_list",
+      "counts": {
+        "picks": 6,
+        "good": 4,
+        "marks": 5,
+        "matched": 4
+      },
+      "prf": {
+        "precision": 0.6666666666666666,
+        "recall": 0.8,
+        "f1": 0.7272727272727272
+      },
+      "perRun": [
+        {
+          "precision": 1,
+          "recall": 1,
+          "f1": 1
+        },
+        {
+          "precision": 0.3333333333333333,
+          "recall": 0.5,
+          "f1": 0.4
+        }
+      ]
+    },
+    {
+      "key": "question",
+      "title": "question",
+      "scorer": "curator_f1_question",
+      "counts": {
+        "picks": 2,
+        "good": 1,
+        "marks": 2,
+        "matched": 1
+      },
+      "prf": {
+        "precision": 0.5,
+        "recall": 0.5,
+        "f1": 0.5
+      },
+      "perRun": [
+        {
+          "precision": 1,
+          "recall": 1,
+          "f1": 1
+        },
+        {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0
+        }
+      ]
+    },
+    {
+      "key": "visual",
+      "title": "visual",
+      "scorer": "curator_f1_visual",
+      "counts": {
+        "picks": 2,
+        "good": 1,
+        "marks": 1,
+        "matched": 1
+      },
+      "prf": {
+        "precision": 0.5,
+        "recall": 1,
+        "f1": 0.6666666666666666
+      },
+      "perRun": [
+        {
+          "precision": 0.5,
+          "recall": 1,
+          "f1": 0.6666666666666666
+        },
+        {
+          "precision": null,
+          "recall": null,
+          "f1": null
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "trace": {
+    "rows": [
+      {
+        "ref": "accents[0]",
+        "item": "accent-1",
+        "proposed": "accent \"disrupted\"",
+        "outcome": "kept",
+        "engine": "placed (zone)"
+      },
+      {
+        "ref": "accents[1]",
+        "item": "accent-2",
+        "proposed": "accent \"purpose.\"",
+        "outcome": "kept",
+        "engine": "placed (zone)"
+      },
+      {
+        "ref": "questions[0]",
+        "item": "question-1",
+        "proposed": "question \"And still, for most of us, life doesn't\"",
+        "outcome": "changed",
+        "engine": "wrapped (size)"
+      },
+      {
+        "ref": "big_words[0]",
+        "item": "big-word-1",
+        "proposed": "bigword \"distribution\"",
+        "outcome": "kept",
+        "engine": "placed (zone)"
+      },
+      {
+        "ref": "visuals[0]",
+        "item": "visual-1",
+        "proposed": "visual \"\" on \"how we allocate our resources, what we\"",
+        "outcome": "changed",
+        "engine": "shrunk (size)"
+      },
+      {
+        "ref": "lists[0].items[0]",
+        "item": "transition-1",
+        "proposed": "list 1.1 \"They want fair pay,\"",
+        "outcome": "changed",
+        "engine": "retimed (timing), moved (zone), wrapped (size)"
+      },
+      {
+        "ref": "lists[0].items[1]",
+        "item": "transition-2",
+        "proposed": "list 1.2 \"protected mental health\"",
+        "outcome": "changed",
+        "engine": "retimed (timing), moved (zone), shrunk (size)"
+      },
+      {
+        "ref": "hook",
+        "item": "hook",
+        "proposed": "hook \"Gen Z won't work like you did\"",
+        "outcome": "changed",
+        "engine": "moved (zone), wrapped (size)"
+      }
+    ],
+    "otherNotes": {
+      "retimed (timing)": 42,
+      "shrunk (size)": 26,
+      "wrapped (size)": 139,
+      "placed (zone)": 4
+    }
+  },
+  "text": "every component\nitem          Claude proposed                                        engine did  notes\naccent-1      accent \"disrupted\"                                     kept        placed (zone)\naccent-2      accent \"purpose.\"                                      kept        placed (zone)\nquestion-1    question \"And still, for most of us, life doesn't\"     changed     wrapped (size)\nbig-word-1    bigword \"distribution\"                                 kept        placed (zone)\nvisual-1      visual \"\" on \"how we allocate our resources, what we\"  changed     shrunk (size)\ntransition-1  list 1.1 \"They want fair pay,\"                         changed     retimed (timing), moved (zone), wrapped (size)\ntransition-2  list 1.2 \"protected mental health\"                     changed     retimed (timing), moved (zone), shrunk (size)\nhook          hook \"Gen Z won't work like you did\"                   changed     moved (zone), wrapped (size)\nproposed 8: kept 3, changed 5\nother engine notes: 42x retimed (timing), 26x shrunk (size), 139x wrapped (size), 4x placed (zone)",
+  "script": "every component\nHOOK  \"Gen Z won't work like you did\"\n\nThe time we're living right now push us to rethink            │\nhow we earn,                                                  │\nhow we spend our time,                                        │\nhow we allocate our resources, what we do.                    │ VISUAL \"\" on \"how we allocate our resources, what we\"\nAI has completely disrupted the way we work,                  │ ACCENT \"disrupted\"\nbut at the same time it has given us a chance to start a      │\nbusiness,                                                     │\na project, put those things out of my head,                   │\ngive it to the world.                                         │\nSocial media has given us alternative ways to earn and is an  │\nexcellent distribution channel for your project,              │ BIGWORD \"distribution\"\nfor your idea.                                                │\nAnd if you look at Gen Z,                                     │\nthey don't live to work, they work to live.                   │\nThey want fair pay, flexible time,                            │ LIST 1 \"They want fair pay\"\nprotected mental health and sense of purpose.                 │ ACCENT \"purpose\"\n                                                              │ LIST 1 \"protected mental health\"\nWe have it all.                                               │\nNew tools, new ways to earn,                                  │\nwhole generation saying,                                      │\nwork should fund life, not take it over.                      │\nAnd still, for most of us,                                    │ QUESTION \"And still, for most of us, life doesn't\"\nlife doesn't feel more ours,                                  │\nmaybe because we never stepped far away from our routine to   │\nactually hear what we really want.                            │\n\nFIXES \"Gen\" -> \"Gen Z\", \"want.\" -> \"want?\""
+}
