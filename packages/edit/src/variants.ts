@@ -1,5 +1,5 @@
 import type { FontRole } from "./font-pairs.ts";
-import type { EngineComponent } from "./engine-note.ts";
+import type { ComponentName } from "./component-defs/names.ts";
 import type { ZoneName } from "./engine-zones.ts";
 import type { SoundKey } from "./preset.ts";
 
@@ -29,7 +29,7 @@ export type Timing =
 export type Zones = readonly [ZoneName, ...ZoneName[]];
 
 interface Common {
-  component: EngineComponent;
+  component: ComponentName;
   variant: `${string}/${string}`; // `<component>/<name>`
   zones: Zones;
   timing: Timing;

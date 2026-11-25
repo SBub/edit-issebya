@@ -1,6 +1,7 @@
 import { build } from "./build.ts";
 import { type CaptionBlock, captionBlocks } from "./caption-blocks.ts";
 import type { PlacedComponent } from "./components.ts";
+import { componentOfOverlay } from "./component-defs/index.ts";
 import type { EngineComponent, EngineNote } from "./engine-note.ts";
 import type { HeadTrack } from "./head-track.ts";
 import type { Measurer } from "./measure.ts";
@@ -139,8 +140,7 @@ export function carryOwnerEdits(from: Edit, placed: Edit, context: Context): Own
     dropped += 1;
     note(item, component, "dropped", `your ${what} could not be kept: ${why}`, span);
   };
-  const kindOf = (item: Overlay): EngineComponent =>
-    item.kind === "hook" ? "HOOK" : isQuestion(item) ? "QUESTION" : "ACCENT";
+  const kindOf = (item: Overlay): EngineComponent => componentOfOverlay(item);
 
   // 1. The texts the owner wrote.
   const text = (

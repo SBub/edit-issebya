@@ -1,6 +1,6 @@
 import type { BigWordBox } from "./behind.ts";
 import { boxAround, captionBlocks } from "./caption-blocks.ts";
-import { isQuestion } from "./question.ts";
+import { componentOfOverlay } from "./component-defs/index.ts";
 import type { EngineComponent } from "./engine-note.ts";
 import type { TextBox } from "./engine-space.ts";
 import type { Edit } from "./schema.ts";
@@ -73,13 +73,7 @@ export function placedComponents(
   const out: PlacedComponent[] = [];
   for (const box of boxes) {
     const component: EngineComponent =
-      box.kind === "caption"
-        ? "CAPTION"
-        : box.kind === "hook"
-          ? "HOOK"
-          : isQuestion({ id: box.itemId, kind: box.kind })
-            ? "QUESTION"
-            : "ACCENT";
+      box.kind === "caption" ? "CAPTION" : componentOfOverlay({ id: box.itemId, kind: box.kind });
     out.push({
       id: box.itemId,
       component,

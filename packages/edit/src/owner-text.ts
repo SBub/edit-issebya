@@ -10,6 +10,7 @@ import {
   wrapGroup,
 } from "./caption-blocks.ts";
 import type { PlacedComponent } from "./components.ts";
+import { componentOfOverlay } from "./component-defs/index.ts";
 import type { EngineComponent, EngineNote } from "./engine-note.ts";
 import type { HeadTrack } from "./head-track.ts";
 import type { Measurer } from "./measure.ts";
@@ -184,7 +185,7 @@ function targetOf(
     const question = isQuestion(overlay);
     return {
       kind: "overlay",
-      component: overlay.kind === "hook" ? "HOOK" : question ? "QUESTION" : "ACCENT",
+      component: componentOfOverlay(overlay),
       item: overlay,
       text: question ? questionText(written) : written,
       words: overlay.words ?? [],

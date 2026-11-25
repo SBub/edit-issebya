@@ -1,6 +1,6 @@
 # Component template: one class per component
 
-Status: approved plan, in progress (step 0 done). The next pull requests follow the steps below.
+Status: approved plan, in progress (steps 0 and 1 done). The next pull requests follow the steps below.
 
 Words used here. A **component** is a meaning the curator (the AI call that reads the transcript)
 picks: ACCENT, QUESTION, BIGWORD, VISUAL, LIST, and HOOK (its own AI call); CAPTION is placed from
@@ -57,7 +57,7 @@ Each step is its own pull request and changes nothing a viewer or the AI can see
 | Step | What                                                                                                                                                                                                       | Proof nothing changed                                                              |
 | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | 0    | Freeze tests (below). Done.                                                                                                                                                                                | they pass on `develop` before anything moves                                       |
-| 1    | Names and identity: `ComponentName`, base class, seven subclasses with `name`, `looks`, `stored`, `order`, `owns`; `COMPONENTS`. The hand-kept lists (except the evals') read them.                        | freeze tests, typecheck                                                            |
+| 1    | Done. Names and identity: `ComponentName`, base class, seven subclasses with `name`, `looks`, `stored`, `order`, `owns`; `COMPONENTS`. The hand-kept lists (except the evals') read them.                  | freeze tests, typecheck                                                            |
 | 2    | Answer: `answer`, `validate`, `picks`, `readBack`, `trace`. The schema, `EngineInput`, `choicesOf`, the empty answers and the decision trace loop over `COMPONENTS`. `Hook.ownCall` is read by the worker. | the schema snapshot is identical; decide tests                                     |
 | 3    | Engine: `text`, `span`, `place`, `whenLeftOut`. The base `place` is today's accent path; the others call their existing functions. `placeExtra`'s `if` chain goes. Risky: split per component.             | placed edits and notes identical; golden pages                                     |
 | 4    | Studio: `owner`, `label`. The Edit tool, saved edits, carry-over and the timeline read them.                                                                                                               | all `owner-edit*` specs unchanged and green                                        |
@@ -65,6 +65,20 @@ Each step is its own pull request and changes nothing a viewer or the AI can see
 | 6    | SECTION: `"SECTION"` in the names, the `Section` class, the `section/number` look, one line each in `COMPONENTS` and `SCORERS`, dataset marks, docs, and the prompt version in PostHog once a draft wins.  | the SECTION branch's tests reused, plus a new spec for moving and editing a number |
 
 Docs change inside each step (a later doc `app_docs/components.md`, "how to add a component").
+
+## Step 1: what exists now
+
+`packages/edit/src/component-defs/` holds `names.ts` (`COMPONENT_NAMES`, `ComponentName`), `base.ts`
+(the abstract `Component`: `name`, `looks`, `defaultLook`, `stored`, `order`, `owns`), one file per
+component (`hook.ts`, `accent.ts`, `question.ts`, `bigword.ts`, `visual.ts`, `list.ts`, `caption.ts`,
+each with a one-line meaning above its class) and `index.ts` (`COMPONENTS`). Now read from them:
+`EngineComponent` (another name for `ComponentName`), the variant's `component` field,
+`variantOf` (the default look), the engine's order (`rankOf`, the lists' rank), the kind of an
+overlay in `placedComponents`, `owner-carry` and `owner-text` (`componentOfOverlay`, through
+`owns`), and the engine's private `Extra.kind`, now `HOOK | ACCENT | BIGWORD | VISUAL`.
+Left for their own steps: the studio's `LABELS` and the owner's move list (step 4, `label` and
+`owner`), `TracedAnswer` (step 2), the evals' lists (step 5), and the stored kind lists in
+`schema.ts` and `TextBox.kind` (storage and drawing names, not component names).
 
 ## Step 0: the freeze tests
 

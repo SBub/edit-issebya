@@ -11,10 +11,10 @@
 // through. A note's variant is the name of the entry its component was picked
 // with (`variant-picker.ts`).
 
+import type { ComponentName } from "./component-defs/names.ts";
 import type { PickedVariants } from "./variant-picker.ts";
 
-export type EngineComponent =
-  "HOOK" | "ACCENT" | "QUESTION" | "BIGWORD" | "VISUAL" | "LIST" | "CAPTION";
+export type EngineComponent = ComponentName;
 
 export type EngineOutcome =
   | "placed" // its first zone, full size, no cost
