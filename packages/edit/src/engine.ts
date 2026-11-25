@@ -1,4 +1,5 @@
 import { clicksFor } from "./clicks.ts";
+import { COMPONENTS } from "./component-defs/index.ts";
 import {
   type AccentChoice,
   type BigWordChoice,
@@ -265,7 +266,7 @@ function placeOnce(
     }
     return {
       ref: HOOK_REF,
-      kind: "hook",
+      kind: "HOOK",
       id: HOOK_ID,
       start,
       end,
@@ -342,7 +343,7 @@ function placeOnce(
     // A lengthened layer (a phrase with no length) keeps its floor.
     const textStarts = [
       ...current.tracks.captions.map((caption) => resolveAnchor(caption.start, byId, duration)),
-      ...extras.filter((extra) => extra.kind !== "visual").map((extra) => extra.start),
+      ...extras.filter((extra) => extra.kind !== "VISUAL").map((extra) => extra.start),
       ...kept.map((plan) => plan.start),
     ];
     for (const plan of kept) {
@@ -407,7 +408,7 @@ function placeOnce(
         reason: `${accentNoun(accent)} ${quote(accentText(words, accent))} shows from ${at(span.start)} to ${at(span.end)}: its words take no time, so it shows the shown floor`,
       });
     }
-    return { ref, kind: "accent", id, start: span.start, end: span.end, index, accent };
+    return { ref, kind: "ACCENT", id, start: span.start, end: span.end, index, accent };
   }
 
   // A big word: from the lead before its first word to its last word's end, at
@@ -448,7 +449,7 @@ function placeOnce(
     }
     return {
       ref,
-      kind: "big_word",
+      kind: "BIGWORD",
       id,
       start,
       end,
@@ -506,7 +507,7 @@ function placeOnce(
         reason: `visual ${index + 1} starts at ${at(start)}, before its short sentence, to show ${minSeconds} s`,
       });
     }
-    return { ref, kind: "visual", id, start, end, index, visual };
+    return { ref, kind: "VISUAL", id, start, end, index, visual };
   }
 
   const extras: Extra[] = hook ? [hook] : [];
@@ -554,16 +555,8 @@ function placeOnce(
   // the same moment: the hook, then the accents, the questions, the big words,
   // the visuals, the lists (spec decision 8).
   const rankOf = (extra: Extra) =>
-    extra.kind === "hook"
-      ? 0
-      : extra.kind === "accent"
-        ? extra.accent!.question
-          ? 2
-          : 1
-        : extra.kind === "big_word"
-          ? 3
-          : 4;
-  const LIST_RANK = 5;
+    COMPONENTS[extra.kind === "ACCENT" && extra.accent!.question ? "QUESTION" : extra.kind].order;
+  const LIST_RANK = COMPONENTS.LIST.order;
 
   // The captions: the current version's, split in time where a text on screen
   // shows their words. A caption's words that a text shows (an accent, a big
@@ -574,14 +567,14 @@ function placeOnce(
   const fixes = new Map(input.word_fixes.map((fix) => [fix.word, fix.text]));
   const onScreen = [
     ...extras.flatMap((extra) =>
-      extra.kind === "accent" || extra.kind === "big_word"
+      extra.kind === "ACCENT" || extra.kind === "BIGWORD"
         ? [
             {
               id: extra.id,
               start: extra.start,
               end: extra.end,
               words: new Set(
-                extra.kind === "accent"
+                extra.kind === "ACCENT"
                   ? range(extra.accent!.from, extra.accent!.to)
                   : range(extra.word!, extra.wordTo!),
               ),
@@ -758,7 +751,7 @@ function placeOnce(
   const hookItem = overlays.get(HOOK_ID);
   if (hookItem) outOverlays.push(hookItem);
   for (const extra of extras) {
-    if (extra.kind !== "accent") continue;
+    if (extra.kind !== "ACCENT") continue;
     const item = overlays.get(extra.id);
     if (!item) continue;
     const from = byId.get((item.start as { word: string }).word)!;
@@ -772,7 +765,7 @@ function placeOnce(
   }
   const outBehind: BehindItem[] = [];
   for (const extra of extras) {
-    if (extra.kind === "accent" || extra.kind === "hook") continue;
+    if (extra.kind === "ACCENT" || extra.kind === "HOOK") continue;
     const item = behind.get(extra.id);
     if (!item) continue;
     const start = resolveAnchor(item.start, byId, duration);
@@ -797,14 +790,14 @@ function placeOnce(
 
   const picks: TextPick[] = [
     ...extras.flatMap((extra) =>
-      extra.kind === "accent" || extra.kind === "big_word"
+      extra.kind === "ACCENT" || extra.kind === "BIGWORD"
         ? [
             {
               id: extra.id,
               ref: extra.ref,
               name: describe(words, extra),
               component:
-                extra.kind === "big_word"
+                extra.kind === "BIGWORD"
                   ? ("BIGWORD" as const)
                   : extra.accent!.question
                     ? ("QUESTION" as const)
@@ -812,9 +805,9 @@ function placeOnce(
               start: extra.start,
               end: extra.end,
               rank: rankOf(extra) * 1000 + extra.index,
-              big: extra.kind === "big_word",
+              big: extra.kind === "BIGWORD",
               words:
-                extra.kind === "accent"
+                extra.kind === "ACCENT"
                   ? range(extra.accent!.from, extra.accent!.to)
                   : range(extra.word!, extra.wordTo!),
             },

@@ -1,12 +1,7 @@
 import type { EngineInput } from "./engine-input.ts";
 import type { EngineComponent } from "./engine-note.ts";
-import {
-  type BoxVariant,
-  type StackVariant,
-  type TextVariant,
-  VARIANTS,
-  type Variant,
-} from "./variants.ts";
+import { COMPONENTS } from "./component-defs/index.ts";
+import type { BoxVariant, StackVariant, TextVariant, Variant } from "./variants.ts";
 
 // The variant picker (`specs/layout-engine.md`, "Writing a variant"): each pick
 // of the engine input gets its entry from `variants.ts`. One entry per
@@ -14,24 +9,9 @@ import {
 // accent placed at the bottom, say) chooses here, never in the engine.
 
 // The entry a component's pick places with. Total over the components: a new
-// component fails to compile until it is named here.
+// component fails to compile until it has a class in `component-defs/`.
 export function variantOf(component: EngineComponent): Variant {
-  switch (component) {
-    case "HOOK":
-      return VARIANTS["hook/typed"];
-    case "ACCENT":
-      return VARIANTS["accent/above-head"];
-    case "QUESTION":
-      return VARIANTS["question/word-by-word"];
-    case "BIGWORD":
-      return VARIANTS["bigword/behind"];
-    case "VISUAL":
-      return VARIANTS["visual/card"];
-    case "LIST":
-      return VARIANTS["list/numbered"];
-    case "CAPTION":
-      return VARIANTS["caption/default"];
-  }
+  return COMPONENTS[component].defaultLook;
 }
 
 // The picked entry of each component the answer places, plus the captions

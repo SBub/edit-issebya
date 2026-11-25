@@ -22,6 +22,7 @@ import {
   storedLines,
   wrapGroup,
 } from "./caption-blocks.ts";
+import type { ComponentName } from "./component-defs/names.ts";
 import { type PlacedComponent, isCaptionBlock } from "./components.ts";
 import type { EngineComponent, EngineNote } from "./engine-note.ts";
 import { withOwnerMarks } from "./owner-marks.ts";
@@ -51,15 +52,18 @@ import { STYLES, VISUAL_STAND_INS } from "./variants.ts";
 // The components the owner may move and resize: every text pick, the VISUALs
 // and the captions, a sentence's captions as one block (`caption-blocks.ts`;
 // owner decision 2026-11-19). A single caption is never moved on its own.
-export const MOVABLE_COMPONENTS: readonly EngineComponent[] = [
-  "ACCENT",
-  "QUESTION",
-  "BIGWORD",
-  "LIST",
-  "HOOK",
-  "VISUAL",
-  "CAPTION",
-];
+// A record over every name, so a new component does not compile until it is listed here (its
+// `owner` rights replace this in a later step). The key order is the order the list is shown in.
+const MOVABLE: Record<ComponentName, true> = {
+  ACCENT: true,
+  QUESTION: true,
+  BIGWORD: true,
+  LIST: true,
+  HOOK: true,
+  VISUAL: true,
+  CAPTION: true,
+};
+export const MOVABLE_COMPONENTS = Object.keys(MOVABLE) as ComponentName[];
 
 export function isMovable(component: Pick<PlacedComponent, "component" | "parts">): boolean {
   if (component.component === "CAPTION") return isCaptionBlock(component);

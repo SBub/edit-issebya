@@ -98,12 +98,12 @@ export function accentText(words: Words, accent: AccentChoice): string {
 // What a note calls an element: the hook's text, the accent's or question's,
 // the big word's, the visual's number.
 export function describe(words: Words, extra: Extra): string {
-  if (extra.kind === "hook") return `the hook ${quote(extra.hook!.text)}`;
-  if (extra.kind === "accent") {
+  if (extra.kind === "HOOK") return `the hook ${quote(extra.hook!.text)}`;
+  if (extra.kind === "ACCENT") {
     const accent = extra.accent!;
     return `${accentNoun(accent)} ${quote(accentText(words, accent))}`;
   }
-  if (extra.kind === "big_word") {
+  if (extra.kind === "BIGWORD") {
     return `the big word ${quote(bigWordText(words, extra.word!, extra.wordTo!))}`;
   }
   return `visual ${extra.index + 1}`;
@@ -127,11 +127,11 @@ function sceneFor(pass: Pass, span: { start: number; end: number }) {
 // finds no legal spot for is left out (false), and the caller notes it.
 export function placeExtra(pass: Pass, extra: Extra): boolean {
   const span = { start: extra.start, end: extra.end };
-  return extra.kind === "hook"
+  return extra.kind === "HOOK"
     ? placeHook(pass, extra, span)
-    : extra.kind === "accent"
+    : extra.kind === "ACCENT"
       ? placeAccent(pass, extra, span)
-      : extra.kind === "big_word"
+      : extra.kind === "BIGWORD"
         ? placeBigWord(pass, extra, span)
         : placeVisual(pass, extra, span);
 }
@@ -139,7 +139,7 @@ export function placeExtra(pass: Pass, extra: Extra): boolean {
 export interface Extra {
   ref: string;
   // `hook`: the written hook, on its window.
-  kind: "accent" | "big_word" | "visual" | "hook";
+  kind: "HOOK" | "ACCENT" | "BIGWORD" | "VISUAL";
   id: string;
   start: number;
   end: number;
